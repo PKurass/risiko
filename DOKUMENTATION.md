@@ -23,20 +23,26 @@ Einzige externe Abhängigkeit zur Laufzeit: **Three.js** (3D), einmalig per CDN.
 |------|-------|---------|
 | `risiko.html` | Enthält Regelkern, Oberfläche (UI) und die 3D-Darstellung (Three.js) | ja |
 | `risiko-karte.js` | Karten-Modul `SvgMap`: liest die SVG ein, wandelt sie in Polygone, cacht sie | ja |
-| `risiko-daten.js` | Optional: die einmal eingelesene Karte als feste Datei (per Knopf „Karte sichern" erzeugt). Hat Vorrang vor Cache und SVG-Auswahl | nein, aber empfohlen |
-| `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen. Nur beim ersten Einlesen nötig | nur einmalig |
+| `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Wird beim Start automatisch geladen und hat Vorrang vor Cache und SVG-Auswahl | ja |
+| `vendor/three.min.js` | Three.js r128, lokal statt per CDN | ja |
+| `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen. Nur zum Backen nötig, nicht zum Spielen | nein |
+| `werkzeug/karte-backen.mjs` | Backt `Risk.svg` → `risiko-daten.js`, headless | nein |
 | `archiv/risiko-karte_STABIL-v1.js` | Beschriftete Sicherungskopie des Karten-Moduls | nein |
+| `archiv/risiko-karte-gezeichnet.js` | Selbstgezeichnete Weltkarte, Ersatzquelle zum Backen | nein |
 | `archiv/risiko-welt.js` | Verworfene Kartenvariante `WorldMapGeo` aus echten Geodaten | nein |
 
-Diese Dateien müssen **im selben Ordner** liegen. Öffnen: `risiko.html` per
-Rechtsklick → „Öffnen mit" → Chrome (oder anderer moderner Browser).
+Die Pflichtdateien müssen **beieinander** liegen (`vendor/` als Unterordner
+daneben). Öffnen: `risiko.html` per Rechtsklick → „Öffnen mit" → Chrome
+(oder anderer moderner Browser). Kein Auswählen, kein Internet.
 
-Im Repo liegt daher alles Spielrelevante flach im Wurzelverzeichnis. Der Ordner
-`archiv/` enthält ausschließlich Stände, die **nicht** eingebunden sind – nichts
-darin wird von `risiko.html` geladen (siehe `archiv/README.md`). `Risk.svg` und
-`risiko-daten.js` sind nicht eingecheckt, weil sie zum jeweiligen Kartenentwurf
-gehören; sobald eine Kartenfassung feststeht, sollte `risiko-daten.js` mit ins
-Repo.
+Der Ordner `archiv/` enthält ausschließlich Stände, die **nicht** eingebunden
+sind – nichts darin wird von `risiko.html` geladen (siehe `archiv/README.md`).
+`werkzeug/` enthält Entwicklerwerkzeuge; zum Spielen wird davon nichts
+gebraucht.
+
+> Frühere Fassungen dieser Doku beschrieben, dass die SVG einmal von Hand
+> ausgewählt werden muss. Das ist überholt: die Karte wird jetzt vorab
+> gebacken und liegt als `risiko-daten.js` im Repo (Abschnitt 5.4).
 
 > Hinweis: Ein Browser lädt lokale Dateien aus Sicherheitsgründen nicht per
 > `fetch()`. Deshalb wird die SVG **einmal manuell ausgewählt** und danach
@@ -229,12 +235,38 @@ Neuguinea→newguinea     Westaustralien→westaustralia  Ostaustralien→eastau
 Wird ein Name nicht gefunden, meldet der Einrichtungs-Bildschirm genau dieses
 Territorium (`SvgMap.missing()`). Dann stimmt die `id` in der SVG nicht.
 
-### 5.4 Feste Einbindung statt wiederholtem Auswählen
+### 5.4 Die Karte backen (statt sie im Browser auszuwählen)
 
-Knopf **„Karte sichern"** ruft `SvgMap.serialize()` und lädt eine Datei
-`risiko-daten.js` herunter (`window.RISIKO_MAP = {...}`). Liegt diese neben der
-HTML, wird sie beim Start bevorzugt geladen – kein Auswählen, kein Cache-Risiko,
-gerätunabhängig.
+`SvgMap.load()` sucht die Karte in dieser Reihenfolge:
+
+1. `window.RISIKO_MAP` aus **`risiko-daten.js`** – hat immer Vorrang,
+2. sonst der `localStorage`-Cache `risiko.svgmap.v1`,
+3. sonst gar nichts → der Einrichtungs-Bildschirm erscheint.
+
+Im Normalfall greift Stufe 1, und die Stufen 2 und 3 kommen nie zum Zug.
+`risiko-daten.js` wird **vorab erzeugt und eingecheckt**:
+
+```bash
+npm install && npx playwright install chromium   # einmalig
+npm run karte                                    # nimmt ./Risk.svg
+npm run karte:gezeichnet                         # Ersatzkarte, ohne SVG
+```
+
+`werkzeug/karte-backen.mjs` startet ein unsichtbares Chromium und lässt dort
+das **unveränderte** `risiko-karte.js` laufen. Es gibt also weiterhin genau
+eine Implementierung des Einlesens – das Werkzeug baut nichts nach, es führt
+nur aus. Den Regelkern schneidet es sich dafür aus `risiko.html` heraus
+(`SvgMap` braucht `RiskEngine.TERR`); passen die Markierungen nicht mehr,
+bricht es hörbar ab, statt mit einer veralteten Kopie weiterzuarbeiten.
+
+Werden weniger als 42 Territorien erkannt, schreibt das Werkzeug **nichts** und
+nennt die fehlenden beim Namen. Dann stimmt eine `id` in der SVG nicht mit
+`NAME2ID` überein (Abschnitt 5.3).
+
+Den Knopf **„Karte sichern"** in der Oberfläche gibt es weiterhin; er lädt
+dieselbe Datei aus dem laufenden Browser herunter. Er ist jetzt aber nur noch
+der Notnagel für den Fall, dass man ohne Werkzeugkette dasteht – der reguläre
+Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 
 ---
 
@@ -291,15 +323,17 @@ gerätunabhängig.
 
 ## 8. Bekannte Grenzen / Stolpersteine
 
-- **Three.js kommt per CDN** (`cdnjs.cloudflare.com`, r128). Erststart braucht
-  Internet; danach cachet der Browser die Bibliothek. Für echtes Offline müsste
-  man Three.js lokal beilegen und den `<script src>` umbiegen.
-- **Toter Code:** In `risiko.html` steckt noch ein ungenutzter Karten-Block
-  („TEIL 2 – WELTKARTE (vollständig im Code)", `const WorldMap=…`). Er wird
-  nicht mehr verwendet (die Karte kommt aus `SvgMap`) und kann bei einer
-  Aufräumrunde entfernt werden.
 - **Kein Test-Harness in der 3D-Fassung.** Der frühere Selbsttest des
   Regelkerns ist nicht mehr verdrahtet; die Logik selbst ist unverändert.
+- **Der Hausregel-Schalter `chain` wirkt nicht.** `opts.chain` wird in
+  `createGame` gespeichert, aber an keiner Stelle gelesen: `END_PHASE` friert
+  beim Wechsel in `fortify` den Deckel `fortCap` bedingungslos ein. Die
+  Zwischenland-Regel (Abschnitt 4.4, Punkt 2) ist dadurch **immer aktiv**,
+  unabhängig vom Haken im Startmenü. Zu entscheiden: Schalter wirksam machen
+  oder Regel fest verdrahten und den Haken entfernen.
+- **`Risk.svg` liegt nicht im Repo.** Gebacken ist gerade die selbstgezeichnete
+  Ersatzkarte aus `archiv/risiko-karte-gezeichnet.js`. Der Kopf von
+  `risiko-daten.js` nennt die jeweilige Quelle.
 - **Formqualität** der Territorien hängt an der SVG und an `rdp`-Epsilon in
   `importSvg` (aktuell 1.3). Kleiner = detaillierter, größer = glatter.
 - **Nicht in jedem Browser getestet.** Entwickelt/gedacht für Chrome.
@@ -334,12 +368,14 @@ Validierung über dasselbe `validate()` verhindert Schummeln.
 
 ## 11. Schnellstart für Entwickler:innen
 
-1. Alle Dateien in einen Ordner, `risiko.html` in Chrome öffnen.
-2. Beim ersten Mal `Risk.svg` auswählen → „Karte sichern" → `risiko-daten.js`
-   danebenlegen.
-3. Code-Einstiegspunkte:
+1. Repo klonen, `risiko.html` in Chrome öffnen. Mehr nicht – die Karte liegt
+   fertig als `risiko-daten.js` daneben.
+2. Code-Einstiegspunkte:
    - Regeln ändern → `RiskEngine` in `risiko.html` (TEIL 1).
    - Kartenerkennung/Namen → `risiko-karte.js`.
    - Aussehen/3D/Steuerung → `Board3D` in `risiko.html` (TEIL 3).
    - Layout/Design/CSS → `<style>`-Block oben in `risiko.html`.
-4. Kein Build nötig – speichern und Seite neu laden (Strg+F5).
+3. Kein Build nötig – speichern und Seite neu laden (Strg+F5).
+4. Nur wenn sich die **Karte** ändert, ist ein Schritt nötig:
+   `npm run karte` (einmalig vorher `npm install && npx playwright install chromium`).
+   Die erzeugte `risiko-daten.js` gehört mit eingecheckt.

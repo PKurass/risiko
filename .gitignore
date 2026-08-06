@@ -1,3 +1,6 @@
+# Abhaengigkeiten der Werkzeuge (das Spiel selbst braucht keine)
+node_modules/
+
 # Betriebssystem-Kram
 .DS_Store
 Thumbs.db
@@ -9,6 +12,6 @@ desktop.ini
 *.swp
 *~
 
-# Hinweis: risiko-daten.js wird bewusst NICHT ignoriert.
-# Sobald eine Kartenfassung feststeht, gehoert sie ins Repo –
-# dann laeuft das Spiel ohne einmaligen SVG-Import.
+# Hinweis: risiko-daten.js ist bewusst eingecheckt. Sie ist die fertig
+# gebackene Karte – nur deshalb startet das Spiel ohne Auswahl-Dialog.
+# Neu erzeugt wird sie mit: npm run karte

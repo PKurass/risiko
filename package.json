@@ -1,0 +1,14 @@
+{
+  "name": "risiko-hausregeln",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Risiko mit eigenen Hausregeln – Werkzeuge. Das Spiel selbst braucht kein npm: risiko.html genuegt.",
+  "type": "module",
+  "scripts": {
+    "karte": "node werkzeug/karte-backen.mjs",
+    "karte:gezeichnet": "node werkzeug/karte-backen.mjs --gezeichnet"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}
