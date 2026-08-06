@@ -34,6 +34,7 @@ function lies(rel) {
 let html = lies("risiko.html");
 
 const ersetzungen = [
+  ['<script src="risiko-regeln.js"></script>', "risiko-regeln.js"],
   ['<script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>', "risiko-daten.js"],
   ['<script src="risiko-karte.js"></script>', "risiko-karte.js"],
   ['<script src="vendor/three.min.js"></script>', "vendor/three.min.js"],
@@ -58,6 +59,14 @@ html = html.replace(
     "     Internet und ohne Nachbardateien. Zum Weiterentwickeln nicht diese Datei\n" +
     "     bearbeiten, sondern risiko.html im Repo. -->"
 );
+
+const uebrig = [...html.matchAll(/<script[^>]*\ssrc="([^"]+)"/gi)].map((m) => m[1]);
+if (uebrig.length) {
+  throw new Error(
+    "Nicht eingebettet: " + uebrig.join(", ") +
+    "\nDie Datei waere nur im Repo lauffaehig. Neuen Tag oben in 'ersetzungen' nachtragen."
+  );
+}
 
 fs.writeFileSync(ZIEL, html);
 console.log(

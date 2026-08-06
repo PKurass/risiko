@@ -22,12 +22,16 @@ gebacken als `risiko-daten.js`.
 
 | Datei | Zweck | Pflicht |
 |------|-------|---------|
-| `risiko.html` | Enthält Regelkern, Oberfläche (UI) und die 3D-Darstellung (Three.js) | ja |
+| `risiko.html` | Oberfläche (UI) und 3D-Darstellung (Three.js), plus das Grundgerüst | ja |
+| `risiko-regeln.js` | Regelkern `RiskEngine` – die gesamte Spiellogik, ohne HTML und ohne Karte | ja |
 | `risiko-karte.js` | Karten-Modul `SvgMap`: liest die SVG ein, wandelt sie in Polygone, cacht sie | ja |
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Wird beim Start automatisch geladen und hat Vorrang vor Cache und SVG-Auswahl | ja |
 | `vendor/three.min.js` | Three.js r128, lokal statt per CDN | ja |
 | `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen (Illustrator-Export, `viewBox 0 0 1983.16 1516.84`). Nur zum Backen nötig, nicht zum Spielen | nein |
 | `werkzeug/karte-backen.mjs` | Backt `Risk.svg` → `risiko-daten.js`, headless | nein |
+| `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) | nein |
+| `werkzeug/regeln-laden.mjs` | Lädt `risiko-regeln.js` in Node | nein |
+| `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei | nein |
 | `archiv/risiko-karte_STABIL-v1.js` | Beschriftete Sicherungskopie des Karten-Moduls | nein |
 | `archiv/risiko-karte-gezeichnet.js` | Selbstgezeichnete Weltkarte, Ersatzquelle zum Backen | nein |
 | `archiv/risiko-welt.js` | Verworfene Kartenvariante `WorldMapGeo` aus echten Geodaten | nein |
@@ -81,17 +85,26 @@ zurückgegebenen Zustand. Das bringt drei Vorteile:
    Regel anzufassen.
 2. **Online-Multiplayer wird ein Anbau, kein Umbau.** Genau diese Aktions-Pakete
    verschickt man später übers Netz.
-3. **Testbarkeit.** Der Regelkern lässt sich ohne Anzeige prüfen (es gab dafür
-   einen Selbsttest; er ist in der aktuellen 3D-Fassung nicht mehr verdrahtet,
-   die Funktion `RiskEngine` ist aber unverändert testbar).
+3. **Testbarkeit.** Der Regelkern lässt sich ohne Anzeige prüfen. `npm test`
+   führt `werkzeug/regeln-testen.mjs` aus – 22 Tests, ohne Browser, ohne
+   Karte, ohne Three.js, in unter einer Sekunde.
 
 ---
 
-## 4. Der Regelkern `RiskEngine` (in `risiko.html`, „TEIL 1")
+## 4. Der Regelkern `RiskEngine` (`risiko-regeln.js`)
 
-Ein IIFE, das ein Objekt mit reinen Funktionen zurückgibt. **Unveränderlich
-behandeln:** `apply()` verändert nie den Eingabezustand, sondern klont ihn
-(`JSON.parse(JSON.stringify(...))`) und gibt einen neuen zurück.
+Ein IIFE, das ein Objekt mit reinen Funktionen zurückgibt.
+
+Die Datei ist bewusst gewöhnliches Browser-JavaScript ohne Modul-Syntax:
+`risiko.html` bindet sie per `<script src>` ein, ganz ohne Build-Schritt.
+Wer den Kern in Node braucht – die Tests, das Backwerkzeug, später der
+Server – lädt ihn über `werkzeug/regeln-laden.mjs`, das den Quelltext liest
+und auswertet. Dadurch läuft überall **derselbe** Code; es gibt keine
+zweite Fassung, die auseinanderlaufen könnte.
+
+**Unveränderlich behandeln:** `apply()` verändert nie den Eingabezustand,
+sondern klont ihn (`JSON.parse(JSON.stringify(...))`) und gibt einen neuen
+zurück.
 
 ### 4.1 Zustandsobjekt (state)
 
@@ -122,9 +135,13 @@ behandeln:** `apply()` verändert nie den Eingabezustand, sondern klont ihn
 
 `createGame(players, opts, seed)` bekommt einen Startwert. Alle Würfel und
 Mischvorgänge laufen über `rnd(s)` mit diesem `seed`. **Gleicher Startwert =
-exakt gleicher Spielverlauf.** Das ist die Grundlage dafür, dass später alle
-Online-Mitspieler garantiert dieselben Würfel sehen, ohne dass jeder Wurf
-einzeln übers Netz muss.
+exakt gleicher Spielverlauf.** Für Tests ist das Gold wert: ein Fehler lässt
+sich mit demselben Startwert beliebig oft nachstellen.
+
+Für den Online-Betrieb war ursprünglich gedacht, damit alle Mitspieler
+dieselben Würfel sehen zu lassen, ohne jeden Wurf zu übertragen. Das geht so
+**nicht auf** – wer den Zustand hat, kann den nächsten Wurf vorausberechnen.
+Warum das ein Problem ist und was daraus folgt, steht in Abschnitt 9.
 
 ### 4.3 Aktionen (die einzige Art, den Zustand zu ändern)
 
@@ -360,8 +377,9 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 
 ## 8. Bekannte Grenzen / Stolpersteine
 
-- **Kein Test-Harness in der 3D-Fassung.** Der frühere Selbsttest des
-  Regelkerns ist nicht mehr verdrahtet; die Logik selbst ist unverändert.
+- **Die Oberfläche ist nicht automatisch geprüft.** `npm test` deckt den
+  Regelkern ab; für `Board3D` und die Dialoge gibt es keinen Testlauf.
+  Bisher wurde dort von Hand mit Playwright geprüft.
 - **Der Hausregel-Schalter `chain` wirkt nicht.** `opts.chain` wird in
   `createGame` gespeichert, aber an keiner Stelle gelesen: `END_PHASE` friert
   beim Wechsel in `fortify` den Deckel `fortCap` bedingungslos ein. Die
@@ -389,7 +407,23 @@ und Zustands-Synchronisierung, Veröffentlichung über **Vercel** oder GitHub
 Pages. Da alle Aktionen deterministische Pakete sind und der Zufall an einem
 `seed` hängt, genügt es, Aktionen (nicht ganze Zustände) zu übertragen und bei
 jedem Client durch denselben `RiskEngine.apply` laufen zu lassen. Serverseitige
-Validierung über dasselbe `validate()` verhindert Schummeln.
+Validierung über dasselbe `validate()` verhindert Schummeln – seit der
+Trennung in `risiko-regeln.js` lässt sich der Kern dafür unverändert in Node
+laden.
+
+> **Vorher zu klären: der Zufall darf nicht vorhersehbar sein.**
+> `rng` liegt im Zustand, den bei diesem Entwurf jeder Client vollständig
+> besitzt, und `rnd()` ist eine reine Funktion davon. Jeder Mitspieler könnte
+> also den nächsten Wurf ausrechnen, **bevor** er fällt. Im Hotseat ist das
+> belanglos; online ist es ein Totalausfall – und die Hausregel `dice`
+> verschärft es, weil dort Entscheidungen bewusst an verdeckter Zufälligkeit
+> hängen: ein Verteidiger könnte beide Optionen durchrechnen und die bessere
+> nehmen.
+>
+> Konsequenz: entweder würfelt der Server (er hält `rng` und liefert nur die
+> gefallenen Augen), oder die Würfe werden per Commit-Reveal abgesichert.
+> Das ist eine Architekturentscheidung **vor** der ersten Zeile Netzwerkcode,
+> denn davon hängt ab, ob der Server nur validiert oder die Wahrheit hält.
 
 ---
 

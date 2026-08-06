@@ -26,10 +26,10 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const HIER = path.dirname(fileURLToPath(import.meta.url));
-const WURZEL = path.resolve(HIER, "..");
+/* Beide Kartenmodule greifen beim Auswerten auf RiskEngine.TERR zu. Der
+   Quelltext kommt aus der einen Datei, die ihn haelt – frueher wurde er
+   aus risiko.html herausgeschnitten. */
+import { WURZEL, regelQuelltext } from "./regeln-laden.mjs";
 
 /* ---------- Argumente ---------- */
 function argumente(argv) {
@@ -44,24 +44,6 @@ function argumente(argv) {
   }
   if (!o.gezeichnet && !o.svg) o.svg = path.join(WURZEL, "Risk.svg");
   return o;
-}
-
-/* ---------- Regelkern aus risiko.html schneiden ----------
-   Beide Kartenmodule greifen beim Auswerten auf RiskEngine.TERR zu. Statt
-   die 42 Territorien hier ein zweites Mal zu pflegen (und damit auf Dauer
-   auseinanderlaufen zu lassen), wird der Regelkern aus risiko.html
-   herausgeschnitten. Stimmen die Markierungen nicht mehr, bricht das
-   Werkzeug hoerbar ab, statt mit einer veralteten Kopie weiterzumachen. */
-function regelkernQuelltext() {
-  const html = fs.readFileSync(path.join(WURZEL, "risiko.html"), "utf8");
-  const von = html.indexOf("const RiskEngine=(function(){");
-  const bis = html.indexOf("</script>", von);
-  if (von < 0 || bis < 0) {
-    throw new Error(
-      "RiskEngine liess sich nicht aus risiko.html schneiden. Wurde TEIL 1 umbenannt oder verschoben?"
-    );
-  }
-  return html.slice(von, bis);
 }
 
 /* --fein: deutlich mehr Abtastpunkte und kaum Glaettung. Naeher an der
@@ -90,7 +72,7 @@ async function backen(opt) {
     const fehler = [];
     seite.on("pageerror", (e) => fehler.push(String(e)));
     await seite.setContent("<!doctype html><html><body></body></html>");
-    await seite.addScriptTag({ content: regelkernQuelltext() });
+    await seite.addScriptTag({ content: regelQuelltext() });
 
     let karte;
     if (opt.gezeichnet) {

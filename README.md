@@ -72,6 +72,17 @@ sehr feine Küstenlinien bekommt.
 Den Kopf von `risiko-daten.js` verrät jederzeit, aus welcher Quelle und in
 welcher Stufe die aktuelle Fassung gebacken wurde.
 
+## Tests
+
+```bash
+npm test
+```
+
+Prüft den Regelkern ohne Browser: Weltdaten (beidseitige Nachbarschaften,
+Kontinent-Zuordnung), Einkommen und Boni, Kartenstaffel, den zweistufigen
+Kampf, die Hausregeln, Aufstellung, Phasenwechsel und den Determinismus.
+22 Tests, unter einer Sekunde.
+
 ## Eine Datei zum Verschicken
 
 ```bash
@@ -91,11 +102,13 @@ ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
 
 | Datei | Zweck |
 |---|---|
-| `risiko.html` | Regelkern (`RiskEngine`), Oberfläche und 3D-Darstellung (`Board3D`) |
+| `risiko.html` | Oberfläche und 3D-Darstellung (`Board3D`) |
+| `risiko-regeln.js` | Regelkern `RiskEngine` – die gesamte Spiellogik |
 | `risiko-karte.js` | Karten-Modul `SvgMap`: liest die SVG ein, wandelt sie in Polygone |
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Nicht von Hand ändern |
 | `vendor/three.min.js` | Three.js r128, lokal eingebunden |
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
+| `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei |
 | `DOKUMENTATION.md` | Technische Dokumentation |
 | `archiv/` | Nicht eingebundene Stände, siehe [archiv/README.md](archiv/README.md) |
@@ -131,7 +144,7 @@ Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
   `createGame` gespeichert, aber nirgends ausgewertet; die
   Zwischenland-Regel ist dadurch immer aktiv, egal wie der Haken im
   Startmenü steht.
-- **Kein Test-Harness.** `RiskEngine` kommt ohne HTML und ohne Three.js aus,
-  ist also unverändert testbar – nur ist gerade nichts verdrahtet.
 - **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
-  aber noch nicht gebaut.
+  aber noch nicht gebaut. **Vorher zu entscheiden:** `rng` liegt im Zustand,
+  den jeder Client hätte – jeder könnte den nächsten Würfelwurf vorab
+  ausrechnen. Der Server muss würfeln. Siehe DOKUMENTATION.md Abschnitt 9.
