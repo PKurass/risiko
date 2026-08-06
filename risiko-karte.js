@@ -47,7 +47,18 @@ function parseColor(str){
   const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(str||"");
   return m?[+m[1],+m[2],+m[3]]:[140,150,160];}
 
-function importSvg(text){
+/* Wie fein die Umrisse abgetastet werden.
+   punkte     – Obergrenze der Abtastpunkte je Pfad. Kleiner = gröber,
+                vor allem bei großen Ländern (der Deckel greift zuerst dort).
+   minSchritt – kleinster Abstand zweier Abtastpunkte, bremst winzige Pfade.
+   glaettung  – Epsilon für Ramer-Douglas-Peucker. Größer = glatter.
+   minFlaeche – Teilflächen darunter fliegen raus (Splitter aus der Abtastung).
+   Die Voreinstellung ist der über die ganze Projektzeit benutzte Stand;
+   werkzeug/karte-backen.mjs kann sie mit --fein überschreiben. */
+const FEINHEIT={punkte:500,minSchritt:1.6,glaettung:1.3,minFlaeche:10};
+
+function importSvg(text,feinheit){
+  const F=Object.assign({},FEINHEIT,feinheit||{});
   const doc=new DOMParser().parseFromString(text,"image/svg+xml");
   if(doc.querySelector("parsererror"))throw new Error("SVG konnte nicht gelesen werden");
   // Knoten ins aktuelle Dokument übernehmen (sonst WrongDocumentError)
@@ -73,10 +84,10 @@ function importSvg(text){
         if(!colFound)colFound=parseColor(getComputedStyle(pth).fill);
         let L=0;try{L=pth.getTotalLength();}catch(e){return;}
         if(L<8)return;
-        const step=Math.max(1.6,L/500),pts=[];
+        const step=Math.max(F.minSchritt,L/F.punkte),pts=[];
         for(let d=0;d<L;d+=step){const p=pth.getPointAtLength(d);pts.push([p.x*sc,p.y*sc]);}
-        let s=rdp(pts,1.3);
-        if(s.length>=4&&area(s)>10)loops.push(s.map(q=>[Math.round(q[0]*10)/10,Math.round(q[1]*10)/10]));
+        let s=rdp(pts,F.glaettung);
+        if(s.length>=4&&area(s)>F.minFlaeche)loops.push(s.map(q=>[Math.round(q[0]*10)/10,Math.round(q[1]*10)/10]));
       });
       if(!loops.length)continue;
       loops.sort((a,b)=>area(b)-area(a));

@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "karte": "node werkzeug/karte-backen.mjs",
-    "karte:gezeichnet": "node werkzeug/karte-backen.mjs --gezeichnet"
+    "karte:gezeichnet": "node werkzeug/karte-backen.mjs --gezeichnet",
+    "karte:fein": "node werkzeug/karte-backen.mjs --fein"
   },
   "devDependencies": {
     "playwright": "1.56.1"

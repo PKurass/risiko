@@ -8,12 +8,13 @@ Zielgruppe: Entwickler:in (JavaScript) und Webdesigner:in, die das Projekt fortf
 ## 1. Was ist das Projekt?
 
 Ein browserbasiertes Risiko-Spiel mit eigenen **Hausregeln**, gedacht zum
-Spielen mit Freunden. Aktuell läuft es als reine Webapp (eine HTML-Datei plus
-zwei JS-Dateien), **hotseat** – alle Spieler an einem Gerät, reihum. Der
-Online-Mehrspieler-Modus ist vorbereitet, aber noch nicht gebaut (siehe Abschnitt 9).
+Spielen mit Freunden. Aktuell läuft es als reine Webapp, **hotseat** – alle
+Spieler an einem Gerät, reihum. Der Online-Mehrspieler-Modus ist vorbereitet,
+aber noch nicht gebaut (siehe Abschnitt 9).
 
-Kein Framework, kein Build-Schritt, keine Installation. Öffnen genügt.
-Einzige externe Abhängigkeit zur Laufzeit: **Three.js** (3D), einmalig per CDN.
+Kein Framework, kein Build-Schritt, keine Installation, **kein Internet**.
+Öffnen genügt. Three.js liegt als `vendor/three.min.js` bei, die Karte fertig
+gebacken als `risiko-daten.js`.
 
 ---
 
@@ -25,7 +26,7 @@ Einzige externe Abhängigkeit zur Laufzeit: **Three.js** (3D), einmalig per CDN.
 | `risiko-karte.js` | Karten-Modul `SvgMap`: liest die SVG ein, wandelt sie in Polygone, cacht sie | ja |
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Wird beim Start automatisch geladen und hat Vorrang vor Cache und SVG-Auswahl | ja |
 | `vendor/three.min.js` | Three.js r128, lokal statt per CDN | ja |
-| `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen. Nur zum Backen nötig, nicht zum Spielen | nein |
+| `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen (Illustrator-Export, `viewBox 0 0 1983.16 1516.84`). Nur zum Backen nötig, nicht zum Spielen | nein |
 | `werkzeug/karte-backen.mjs` | Backt `Risk.svg` → `risiko-daten.js`, headless | nein |
 | `archiv/risiko-karte_STABIL-v1.js` | Beschriftete Sicherungskopie des Karten-Moduls | nein |
 | `archiv/risiko-karte-gezeichnet.js` | Selbstgezeichnete Weltkarte, Ersatzquelle zum Backen | nein |
@@ -41,12 +42,13 @@ sind – nichts darin wird von `risiko.html` geladen (siehe `archiv/README.md`).
 gebraucht.
 
 > Frühere Fassungen dieser Doku beschrieben, dass die SVG einmal von Hand
-> ausgewählt werden muss. Das ist überholt: die Karte wird jetzt vorab
-> gebacken und liegt als `risiko-daten.js` im Repo (Abschnitt 5.4).
-
-> Hinweis: Ein Browser lädt lokale Dateien aus Sicherheitsgründen nicht per
-> `fetch()`. Deshalb wird die SVG **einmal manuell ausgewählt** und danach
-> dauerhaft gespeichert – nicht bei jedem Start neu.
+> ausgewählt werden muss. Das ist überholt: die Karte wird vorab gebacken und
+> liegt als `risiko-daten.js` im Repo (Abschnitt 5.4).
+>
+> Der Grund für die frühere Auswahl bleibt gültig und erklärt, warum es
+> `risiko-daten.js` überhaupt gibt: ein Browser lädt lokale Dateien aus
+> Sicherheitsgründen nicht per `fetch()`. Ein `<script src>` darf er dagegen
+> laden – deshalb ist die Karte eine JS-Datei und keine JSON-Datei.
 
 ---
 
@@ -210,7 +212,10 @@ SvgMap.W, SvgMap.H     // normierte Zeichenmaße (W=1200)
 `importSvg` hängt die SVG unsichtbar ins Dokument, nutzt die browsereigene
 Kurvenmathematik (`getTotalLength` / `getPointAtLength`), um jeden Pfad in eine
 Punktfolge abzutasten, vereinfacht sie (Ramer-Douglas-Peucker, `rdp`) und
-normiert auf Breite 1200. Farbe je Territorium via `getComputedStyle(path).fill`.
+normiert auf Breite 1200. Wie fein das geschieht, steht in der Konstante
+`FEINHEIT` am Kopf von `importSvg` (`punkte`, `minSchritt`, `glaettung`,
+`minFlaeche`); `importSvg(text, feinheit)` nimmt optional abweichende Werte.
+Ohne zweites Argument bleibt es beim eingespielten Stand. Farbe je Territorium via `getComputedStyle(path).fill`.
 Ergebnis wird in `localStorage` (Key `risiko.svgmap.v1`) gecacht.
 
 ### 5.3 Namenszuordnung SVG-`id` → Spiel-`id`
@@ -249,6 +254,7 @@ Im Normalfall greift Stufe 1, und die Stufen 2 und 3 kommen nie zum Zug.
 ```bash
 npm install && npx playwright install chromium   # einmalig
 npm run karte                                    # nimmt ./Risk.svg
+npm run karte:fein                               # feinere Abtastung
 npm run karte:gezeichnet                         # Ersatzkarte, ohne SVG
 ```
 
@@ -331,11 +337,15 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Zwischenland-Regel (Abschnitt 4.4, Punkt 2) ist dadurch **immer aktiv**,
   unabhängig vom Haken im Startmenü. Zu entscheiden: Schalter wirksam machen
   oder Regel fest verdrahten und den Haken entfernen.
-- **`Risk.svg` liegt nicht im Repo.** Gebacken ist gerade die selbstgezeichnete
-  Ersatzkarte aus `archiv/risiko-karte-gezeichnet.js`. Der Kopf von
-  `risiko-daten.js` nennt die jeweilige Quelle.
-- **Formqualität** der Territorien hängt an der SVG und an `rdp`-Epsilon in
-  `importSvg` (aktuell 1.3). Kleiner = detaillierter, größer = glatter.
+- **Kleine Teilflächen** unter `FEINHEIT.minFlaeche` werden als
+  Abtast-Splitter verworfen. Bei der aktuellen `Risk.svg` gehen dadurch keine
+  Inseln verloren (54 Teilflächen in beiden Feinheitsstufen); bei einer
+  überarbeiteten Karte mit sehr kleinen Inseln wäre das zu prüfen.
+- **Formqualität** der Territorien hängt an der SVG und an `FEINHEIT` in
+  `risiko-karte.js`. Voreingestellt sind 500 Abtastpunkte je Pfad und
+  Glättung 1.3. `npm run karte:fein` backt mit 2500 Punkten und Glättung
+  0.35: rund doppelt so große `risiko-daten.js`, im Bild aber praktisch
+  deckungsgleich – die Voreinstellung genügt also.
 - **Nicht in jedem Browser getestet.** Entwickelt/gedacht für Chrome.
 
 ---

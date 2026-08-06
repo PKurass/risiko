@@ -33,8 +33,9 @@ Dann:
 
 ```bash
 npm run karte              # nimmt ./Risk.svg
+npm run karte:fein         # feinere Abtastung, siehe unten
 npm run karte -- pfad/zu/andere.svg
-npm run karte:gezeichnet   # ohne SVG, siehe unten
+npm run karte:gezeichnet   # ohne SVG, Notfallkarte
 ```
 
 Das Werkzeug startet ein unsichtbares Chromium und lässt dort das
@@ -53,21 +54,23 @@ fehlenden beim Namen; es schreibt dann nichts. Fast immer passt dann eine `id`
 in der SVG nicht zur Namensliste `NAME2ID` in `risiko-karte.js`
 (siehe DOKUMENTATION.md Abschnitt 5.1 und 5.3).
 
-### Welche Karte steckt gerade drin?
+### Wie detailtreu wird die Karte?
 
-Aktuell die **selbstgezeichnete Ersatzkarte** aus
-`archiv/risiko-karte-gezeichnet.js` – der Kartenblock, der früher ungenutzt in
-`risiko.html` lag. Grob, aber vollständig (42/42) und ohne Internet.
+`importSvg` tastet jeden SVG-Pfad in Punkten ab und vereinfacht die Punktfolge
+danach. Wie fein, steht in der Konstante `FEINHEIT` in `risiko-karte.js`:
 
-Sie ist nur die Rückfallebene, weil `Risk.svg` noch nicht im Repo liegt. Sobald
-die SVG da ist:
+| | `punkte` | `glaettung` | `risiko-daten.js` |
+|---|---|---|---|
+| Voreinstellung (`npm run karte`) | 500 | 1.3 | 37 kB |
+| `npm run karte:fein` | 2500 | 0.35 | 77 kB |
 
-```bash
-npm run karte
-```
+Bei der aktuellen `Risk.svg` liegen beide Fassungen praktisch deckungsgleich
+übereinander (54 Teilflächen in beiden, keine Insel geht verloren). Die
+Voreinstellung genügt also – `--fein` lohnt erst, wenn eine überarbeitete Karte
+sehr feine Küstenlinien bekommt.
 
-und die Ersatzkarte ist ersetzt. Den Kopf von `risiko-daten.js` verrät jederzeit,
-aus welcher Quelle die aktuelle Fassung gebacken wurde.
+Den Kopf von `risiko-daten.js` verrät jederzeit, aus welcher Quelle und in
+welcher Stufe die aktuelle Fassung gebacken wurde.
 
 ## Dateien
 
@@ -81,8 +84,8 @@ aus welcher Quelle die aktuelle Fassung gebacken wurde.
 | `DOKUMENTATION.md` | Technische Dokumentation |
 | `archiv/` | Nicht eingebundene Stände, siehe [archiv/README.md](archiv/README.md) |
 
-`Risk.svg` liegt (noch) nicht im Repo. Sie wird nur zum Backen gebraucht, nicht
-zum Spielen – gehört aber hinein, damit die Karte reproduzierbar bleibt.
+`Risk.svg` liegt mit im Repo. Zum Spielen wird sie nicht gebraucht, nur zum
+Backen – aber nur so bleibt die Karte reproduzierbar.
 
 ## Stand und nächste Schritte
 
@@ -92,7 +95,6 @@ Spielstand wird automatisch im Browser gespeichert.
 Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 
 - **Optik** – als Nächstes dran.
-- **`Risk.svg` fehlt im Repo**, deshalb läuft gerade die Ersatzkarte.
 - **Der Hausregel-Schalter `chain` wirkt nicht.** `opts.chain` wird in
   `createGame` gespeichert, aber nirgends ausgewertet; die
   Zwischenland-Regel ist dadurch immer aktiv, egal wie der Haken im

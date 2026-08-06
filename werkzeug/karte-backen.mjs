@@ -33,10 +33,11 @@ const WURZEL = path.resolve(HIER, "..");
 
 /* ---------- Argumente ---------- */
 function argumente(argv) {
-  const o = { svg: null, ziel: path.join(WURZEL, "risiko-daten.js"), gezeichnet: false };
+  const o = { svg: null, ziel: path.join(WURZEL, "risiko-daten.js"), gezeichnet: false, fein: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--gezeichnet") o.gezeichnet = true;
+    else if (a === "--fein") o.fein = true;
     else if (a === "--ziel") o.ziel = path.resolve(WURZEL, argv[++i] ?? "");
     else if (a.startsWith("--")) throw new Error("Unbekannter Schalter: " + a);
     else o.svg = path.resolve(process.cwd(), a);
@@ -62,6 +63,11 @@ function regelkernQuelltext() {
   }
   return html.slice(von, bis);
 }
+
+/* --fein: deutlich mehr Abtastpunkte und kaum Glaettung. Naeher an der
+   Vorlage, dafuer groessere risiko-daten.js. Ohne den Schalter bleibt es
+   bei der Voreinstellung aus risiko-karte.js. */
+const FEIN = { punkte: 2500, minSchritt: 0.4, glaettung: 0.35, minFlaeche: 4 };
 
 /* Pfade moeglichst kurz anzeigen – aber nichts wie ../../../tmp/... , das
    liest sich schlechter als der volle Pfad. */
@@ -111,12 +117,15 @@ async function backen(opt) {
       }
       await seite.addScriptTag({ content: datei("risiko-karte.js") });
       const svgText = fs.readFileSync(opt.svg, "utf8");
-      karte = await seite.evaluate((txt) => {
-        SvgMap.importSvg(txt);
-        const daten = JSON.parse(SvgMap.serialize());
-        daten.fehlend = SvgMap.missing();
-        return daten;
-      }, svgText);
+      karte = await seite.evaluate(
+        ({ txt, feinheit }) => {
+          SvgMap.importSvg(txt, feinheit);
+          const daten = JSON.parse(SvgMap.serialize());
+          daten.fehlend = SvgMap.missing();
+          return daten;
+        },
+        { txt: svgText, feinheit: opt.fein ? FEIN : null }
+      );
     }
 
     if (fehler.length) throw new Error("Fehler im Browser:\n" + fehler.join("\n"));
@@ -131,7 +140,7 @@ const opt = argumente(process.argv.slice(2));
 console.log(
   opt.gezeichnet
     ? "Quelle: selbstgezeichnete Karte (archiv/risiko-karte-gezeichnet.js)"
-    : "Quelle: " + kurz(opt.svg)
+    : "Quelle: " + kurz(opt.svg) + (opt.fein ? "  [fein]" : "")
 );
 
 const karte = await backen(opt);
@@ -153,8 +162,9 @@ const kopf =
   "/* Automatisch erzeugt von werkzeug/karte-backen.mjs – nicht von Hand aendern.\n" +
   "   Quelle: " +
   (opt.gezeichnet ? "archiv/risiko-karte-gezeichnet.js" : kurz(opt.svg)) +
+  (opt.fein ? "  [fein]" : "") +
   "\n   Neu backen: npm run karte" +
-  (opt.gezeichnet ? ":gezeichnet" : "") +
+  (opt.gezeichnet ? ":gezeichnet" : opt.fein ? ":fein" : "") +
   " */\n";
 
 fs.writeFileSync(opt.ziel, kopf + "window.RISIKO_MAP=" + JSON.stringify(daten) + ";\n");
