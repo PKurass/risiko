@@ -147,6 +147,7 @@ Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 
 - **Optik** – als Nächstes dran.
 - **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
-  aber noch nicht gebaut. **Vorher zu entscheiden:** `rng` liegt im Zustand,
-  den jeder Client hätte – jeder könnte den nächsten Würfelwurf vorab
-  ausrechnen. Der Server muss würfeln. Siehe DOKUMENTATION.md Abschnitt 9.
+  aber noch nicht gebaut. Der Sichtfilter `viewFor` steht bereits
+  (DOKUMENTATION.md 4.6); offen ist die Serverwahl. **Wichtig dabei:**
+  gewürfelt werden muss auf dem Server – wer den vollen Zustand hat, kann
+  jeden Wurf vorab ausrechnen. Siehe Abschnitt 9.

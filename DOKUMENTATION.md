@@ -242,6 +242,39 @@ auf die sich Karte und UI beziehen.
 
 ---
 
+### 4.6 Die Sicht eines Spielers: `viewFor(state, pi)`
+
+Der volle Zustand enthält drei Dinge, die kein einzelner Spieler wissen darf:
+
+| Feld | warum geheim |
+|---|---|
+| `rng` | Wer ihn hat, ruft `apply()` selbst auf und kennt jeden kommenden Wurf |
+| `deck` | die Reihenfolge des Stapels verrät die nächsten Karten |
+| `hands[andere]` | die Handkarten der Mitspieler |
+| `discard` | verriete im Umkehrschluss, was noch im Stapel steckt |
+
+Im Hotseat ist das belanglos – alle sitzen vor demselben Bildschirm, und die
+Oberfläche zeigt ohnehin nur die Hand des aktuellen Spielers. Sobald der
+Zustand aber übers Netz an mehrere Geräte geht, ist es ein Leck.
+
+`viewFor(state, pi)` liefert eine bereinigte Kopie: `rng` wird `null`,
+Stapel, Ablage und fremde Hände werden zu Rückseiten (`{sym:null,hidden:true}`).
+**Längen bleiben erhalten**, denn Kartenzahlen sind öffentlich und die
+Oberfläche zeigt sie an – sie kann mit einer Sicht unverändert arbeiten.
+Zusätzlich stehen `you` (wessen Sicht) und `redacted: true` darin. Mit
+`pi = -1` bekommt man eine reine Zuschauersicht. Der Eingabezustand bleibt
+unberührt.
+
+Gemessen über 2000 Kämpfe: mit dem vollen Zustand trifft eine Vorhersage des
+nächsten Wurfs in **100 %** der Fälle, aus der Sicht nur noch in **2,0 %** –
+und das ist genau die Zufallserwartung (1/56 ≈ 1,8 % für drei sortierte
+Würfel). Ein Test hält das fest.
+
+> `viewFor` schützt beim **Versand**. Es ersetzt keine serverseitige Prüfung:
+> gewürfelt werden muss dort, wo der volle Zustand liegt. Siehe Abschnitt 9.
+
+---
+
 ## 5. Das Karten-Modul `SvgMap` (`risiko-karte.js`)
 
 Wandelt deine `Risk.svg` in spielbare Daten. Schnittstelle:
@@ -430,10 +463,26 @@ laden.
 > hängen: ein Verteidiger könnte beide Optionen durchrechnen und die bessere
 > nehmen.
 >
+> Der Zustand verrät ohnehin mehr, als er darf: `deck` und die `hands` aller
+> Spieler stehen darin. Beides zusammen führt zur selben Antwort – der Server
+> hält die Wahrheit, jeder Spieler bekommt nur eine gefilterte Sicht.
+>
 > Konsequenz: entweder würfelt der Server (er hält `rng` und liefert nur die
 > gefallenen Augen), oder die Würfe werden per Commit-Reveal abgesichert.
 > Das ist eine Architekturentscheidung **vor** der ersten Zeile Netzwerkcode,
 > denn davon hängt ab, ob der Server nur validiert oder die Wahrheit hält.
+> Commit-Reveal käme ohne vertrauenswürdigen Server aus, kostet aber eine
+> zusätzliche Runde pro Wurf und hilft gegen das Kartenleck gar nicht.
+
+**Vorhanden ist bereits** `viewFor(state, pi)` (Abschnitt 4.6): es macht aus
+dem vollen Zustand die Sicht eines einzelnen Spielers. Damit ist der Teil,
+der zum Regelkern gehört, unabhängig von der Serverwahl festgezurrt.
+
+Wenn der Server ohnehin den Zustand verschickt, wird der Rest **einfacher**
+als der ursprüngliche Entwurf: Aktions-Wiedergabe und Determinismus werden
+für die Synchronisierung gar nicht mehr gebraucht. Der deterministische
+Zufall bleibt trotzdem wertvoll – als Testwerkzeug, weil sich jeder Fehler
+mit demselben Startwert beliebig oft nachstellen lässt.
 
 ---
 

@@ -83,6 +83,37 @@ function shuffle(s,a){for(let i=a.length-1;i>0;i--){const j=rint(s,i+1);const t=
 function roll(s,n){const a=[];for(let i=0;i<n;i++)a.push(1+rint(s,6));return a.sort((x,y)=>y-x);}
 function clone(s){return JSON.parse(JSON.stringify(s));}
 function say(s,t,c,d){s.log.push({t:t,c:c||"l-sys",d:d||null});}
+
+/* ---------- Sicht eines Spielers auf den Zustand ----------
+   Der volle Zustand enthaelt Dinge, die kein einzelner Spieler wissen darf:
+   den Zufallszustand rng, die Reihenfolge des Kartenstapels und die
+   Handkarten der Mitspieler. Im Hotseat ist das belanglos – alle sitzen vor
+   demselben Bildschirm. Sobald der Zustand aber uebers Netz an mehrere
+   Geraete geht, waere es ein Leck, und zwar ein besonders unangenehmes:
+
+   Wer rng hat, kann jeden kommenden Wurf ausrechnen, indem er einfach
+   selbst apply() aufruft. Er muss dazu nichts knacken – der Regelkern ist
+   das Orakel. Gerade die Hausregel dice lebt davon, dass der naechste Wurf
+   ungewiss ist; berechenbar belohnt sie den Schummler.
+
+   viewFor(state, pi) macht daraus die Sicht von Spieler pi. Laengen bleiben
+   erhalten (Kartenzahlen der Gegner sind oeffentlich, die Symbole nicht),
+   damit die Oberflaeche unveraendert damit arbeiten kann. Mit pi = -1
+   bekommt man eine reine Zuschauersicht.
+
+   Wichtig: das ist eine Schutzmassnahme fuer den Versand, kein Ersatz fuer
+   serverseitige Pruefung. Gewuerfelt werden muss dort, wo der volle Zustand
+   liegt – siehe DOKUMENTATION.md Abschnitt 9. */
+function verdeckt(){return{sym:null,hidden:true};}
+function viewFor(state,pi){
+  const v=clone(state);
+  v.rng=null;                                     // ohne rng keine Vorhersage
+  v.deck=v.deck.map(verdeckt);                    // Anzahl bleibt, Reihenfolge nicht
+  v.discard=v.discard.map(verdeckt);              // verriete sonst, was im Stapel fehlt
+  v.hands=v.hands.map((h,i)=>i===pi?h:h.map(verdeckt));
+  v.you=pi;                                       // wessen Sicht das ist
+  v.redacted=true;                                // ... und dass es eine ist
+  return v;}
 function terrOf(s,pi){return Object.keys(TERR).filter(id=>s.owner[id]===pi);}
 function freeTerr(s){return Object.keys(TERR).filter(id=>s.owner[id]===NONE);}
 function contBonus(s,pi){let b=0;for(const c in CONTINENTS){
@@ -272,5 +303,5 @@ function apply(state,a){
   return{ok:true,state:s};}
 return{CONTINENTS,TERR,ADJ,NONE,createGame,apply,validate,terrOf,freeTerr,incomeOf,
   tradeValue,isValidSet,mustTrade,fortifyCapOf,fortifyMaxOf,inSetup,
-  attackMaxOf,defendMaxOf};
+  attackMaxOf,defendMaxOf,viewFor};
 })();

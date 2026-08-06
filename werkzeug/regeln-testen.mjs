@@ -337,6 +337,82 @@ test("Verstaerkungsphase laesst sich nicht mit offenen Truppen verlassen", () =>
   assert.match(schlecht(E.apply(s, { type: "END_PHASE" })), /Erst alle Truppen/);
 });
 
+/* ---------------- Sicht eines Spielers ---------------- */
+test("viewFor entfernt alles, was ein Spieler nicht wissen darf", () => {
+  const s = bau({ spieler: 3 });
+  s.hands = [[{ sym: "inf" }], [{ sym: "kav" }, { sym: "wild" }], [{ sym: "art" }]];
+  s.discard = [{ sym: "inf" }, { sym: "art" }];
+  const v = E.viewFor(s, 0);
+
+  assert.equal(v.rng, null, "kein Zufallszustand");
+  assert.equal(v.you, 0);
+  assert.equal(v.redacted, true);
+
+  // eigene Hand vollstaendig, fremde nur als Rueckseiten
+  assert.deepEqual(v.hands[0], [{ sym: "inf" }], "eigene Karten bleiben lesbar");
+  assert.ok(v.hands[1].every((k) => k.hidden && k.sym === null), "fremde Hand verdeckt");
+  assert.ok(v.hands[2].every((k) => k.hidden && k.sym === null), "fremde Hand verdeckt");
+
+  // Anzahlen bleiben oeffentlich – die Oberflaeche zeigt sie an
+  assert.deepEqual(v.hands.map((h) => h.length), [1, 2, 1], "Kartenzahlen bleiben sichtbar");
+  assert.equal(v.deck.length, s.deck.length, "Stapelgroesse bleibt sichtbar");
+  assert.ok(v.deck.every((k) => k.hidden), "Stapelinhalt verdeckt");
+  assert.ok(v.discard.every((k) => k.hidden), "Ablage verdeckt");
+
+  // im gesamten JSON darf kein fremdes Symbol mehr auftauchen
+  const ohneEigene = JSON.stringify({ ...v, hands: v.hands.slice(1) });
+  assert.equal(/"sym":"(kav|wild|art)"/.test(ohneEigene), false, "Symbol durchgesickert");
+});
+
+test("viewFor laesst das Spielbrett unangetastet", () => {
+  const s = bau({ armies: { china: 7 }, owner: { india: 1 } });
+  const v = E.viewFor(s, 1);
+  assert.deepEqual(v.owner, s.owner, "Besitzverhaeltnisse sind oeffentlich");
+  assert.deepEqual(v.armies, s.armies, "Truppenzahlen sind oeffentlich");
+  assert.deepEqual(v.players, s.players);
+  assert.equal(v.phase, s.phase);
+  assert.equal(v.cur, s.cur);
+  assert.deepEqual(v.log, s.log, "der Verlauf ist bereits offengelegt");
+});
+
+test("viewFor veraendert den Originalzustand nicht", () => {
+  const s = bau({ spieler: 2 });
+  s.hands = [[{ sym: "inf" }], [{ sym: "kav" }]];
+  const vorher = JSON.stringify(s);
+  E.viewFor(s, 0);
+  assert.equal(JSON.stringify(s), vorher);
+});
+
+test("Aus der Sicht laesst sich der naechste Wurf nicht vorhersagen", () => {
+  /* Das ist der eigentliche Zweck. Mit dem vollen Zustand trifft eine
+     Vorhersage immer – ohne rng darf sie nur noch zufaellig stimmen.
+     Gemessen ueber viele Startwerte, damit ein Zufallstreffer nichts
+     kaputtmacht. */
+  const angriff = { type: "ATTACK", from: "china", to: "india", dice: 3 };
+  const wurf = (z) => {
+    const r = E.apply(z, angriff);
+    return r.ok && r.state.pending ? r.state.pending.aDice.join("-") : null;
+  };
+
+  let mitVoll = 0, mitSicht = 0, n = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const s = bau({ armies: { china: 9, india: 9 }, owner: { india: 1 } });
+    s.rng = seed;                                  // je Durchgang andere Lage
+    const echt = wurf(s);
+    if (!echt) continue;
+    n++;
+    if (wurf(JSON.parse(JSON.stringify(s))) === echt) mitVoll++;   // voller Zustand
+    if (wurf(E.viewFor(s, 1)) === echt) mitSicht++;                // nur die Sicht
+  }
+
+  assert.ok(n > 150, "genug Durchgaenge");
+  assert.equal(mitVoll, n, "mit vollem Zustand ist die Vorhersage immer richtig");
+  assert.ok(
+    mitSicht < n * 0.2,
+    `aus der Sicht darf die Vorhersage nur zufaellig stimmen, war aber ${mitSicht}/${n}`
+  );
+});
+
 /* ---------------- Determinismus ---------------- */
 test("Gleicher Startwert ergibt exakt denselben Spielverlauf", () => {
   const spiel = () =>
