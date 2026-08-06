@@ -1,0 +1,14 @@
+# Betriebssystem-Kram
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+*~
+
+# Hinweis: risiko-daten.js wird bewusst NICHT ignoriert.
+# Sobald eine Kartenfassung feststeht, gehoert sie ins Repo –
+# dann laeuft das Spiel ohne einmaligen SVG-Import.

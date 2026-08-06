@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Risiko – Hausregeln</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#0f1420;color:#e8eefc}
+header{padding:10px 16px;background:#1a2233;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid #2a3550}
+header h1{font-size:16px;margin:0}
+.turn-badge{padding:4px 12px;border-radius:20px;font-weight:600;font-size:13px;color:#08101f}
+.pill{background:#232d42;padding:4px 10px;border-radius:16px;font-size:12px;color:#8a97b3}
+.pill.active{color:#0f1420;background:#4da3ff;font-weight:700}
+main{display:flex;gap:12px;padding:12px;align-items:flex-start;flex-wrap:wrap}
+#boardWrap{flex:1 1 660px;min-width:320px;background:#0d1526;border-radius:14px;padding:6px;border:1px solid #2a3550}
+#stage{position:relative;width:100%;aspect-ratio:16/10;border-radius:10px;overflow:hidden}
+#board,#labels{position:absolute;inset:0;width:100%;height:100%;display:block}
+#board{cursor:pointer}
+#labels{pointer-events:none}
+#mapLoader{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#0d1526;padding:20px;z-index:3}
+#mapLoader.show{display:flex}
+.viewbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.viewbar button{padding:6px 12px;font-size:12px;background:#2b3856;color:#e8eefc}
+.viewbar button.on{background:#4da3ff;color:#08101f}
+aside{flex:0 0 300px;display:flex;flex-direction:column;gap:12px}
+.card{background:#1a2233;border:1px solid #2a3550;border-radius:14px;padding:14px}
+.card h2{margin:0 0 8px;font-size:13px;color:#8a97b3;text-transform:uppercase;letter-spacing:.6px}
+button{cursor:pointer;border:none;border-radius:10px;padding:9px 13px;font-size:14px;font-weight:600;background:#4da3ff;color:#08101f}
+button.sec{background:#2b3856;color:#e8eefc}
+button:disabled{opacity:.4;cursor:not-allowed}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+#log{height:140px;overflow:auto;font-size:12px;line-height:1.5;color:#c3cee6}
+.l-conq{color:#37d67a}.l-att{color:#ffd166}.l-sys{color:#8a97b3}.l-card{color:#b980ff}.l-err{color:#ff5470}
+.pl-row{display:flex;align-items:center;gap:8px;font-size:13px;margin:3px 0}
+.swatch{width:14px;height:14px;border-radius:4px}
+.hint{font-size:12px;color:#8a97b3;line-height:1.5}
+.hand{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.chip{padding:6px 9px;border-radius:8px;font-size:12px;font-weight:700;background:#232d42;border:2px solid transparent;cursor:pointer;min-width:34px;text-align:center}
+.chip.sel{border-color:#4da3ff}
+.chip.inf{color:#8bd17c}.chip.kav{color:#f0b562}.chip.art{color:#e78bd1}.chip.wild{color:#e8eefc;background:#3a2a5e}
+.overlay{position:fixed;inset:0;background:rgba(6,10,20,.78);display:none;align-items:center;justify-content:center;z-index:20}
+.overlay.show{display:flex}
+.modal{background:#1a2233;border:1px solid #35456b;border-radius:16px;padding:22px;max-width:440px;width:92%;max-height:88vh;overflow:auto}
+.modal h3{margin:0 0 8px}
+.stepper{display:flex;align-items:center;gap:14px;justify-content:center;margin:14px 0}
+.stepper button{width:40px;height:40px;border-radius:50%;font-size:20px;padding:0}
+.bignum{font-size:34px;font-weight:800;min-width:56px;text-align:center}
+.setup-grid{display:flex;flex-direction:column;gap:10px}
+.setup-grid label{font-size:13px;color:#8a97b3}
+input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #35456b;background:#0f1420;color:#e8eefc}
+.toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:#c3cee6;margin-top:8px}
+.dice{display:inline-flex;gap:4px;margin-left:6px}
+.die{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.die.a{background:#ffd166;color:#3a2a00}.die.d{background:#7aa2ff;color:#06102b}
+.saveinfo{font-size:11px;color:#8a97b3;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚔️ RISIKO · Hausregeln</h1>
+  <span id="turnBadge" class="turn-badge">–</span>
+  <span class="pill" data-ph="setup">0 · Aufstellung</span>
+  <span class="pill" data-ph="reinforce">1 · Verstärken</span>
+  <span class="pill" data-ph="attack">2 · Angreifen</span>
+  <span class="pill" data-ph="fortify">3 · Verschieben</span>
+  <span id="reinfInfo" class="pill"></span>
+</header>
+
+<main>
+  <div id="boardWrap">
+    <div class="viewbar">
+      <button id="vN" class="on">Nord</button>
+      <button id="vE">Ost</button>
+      <button id="vS">Süd</button>
+      <button id="vW">West</button>
+      <span style="flex:1"></span>
+      <button id="vTilt">Kippen</button>
+    </div>
+    <div id="stage">
+      <canvas id="board"></canvas>
+      <canvas id="labels"></canvas>
+      <div id="mapLoader">
+        <div style="max-width:340px;text-align:center">
+          <div style="font-size:15px;margin-bottom:10px">Karte einrichten</div>
+          <div class="hint" style="margin-bottom:12px">Wähle einmal deine <b>Risk.svg</b>. Die Formen werden dann dauerhaft gespeichert – danach nie wieder.</div>
+          <input type="file" id="svgFile" accept=".svg,image/svg+xml">
+          <div class="hint" id="svgStatus" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:4px">Links ziehen = drehen (Klick = wählen) · rechts ziehen = verschieben · Mausrad = zoomen</div>
+  </div>
+  <aside>
+    <div class="card">
+      <h2>Am Zug</h2>
+      <div id="players"></div>
+      <div class="btnrow" style="margin-top:10px">
+        <button id="nextPhase">Weiter</button>
+        <button id="skipAtk" class="sec" style="display:none">Angriff überspringen</button>
+        <button id="autoBtn" class="sec" style="display:none">Aufstellung automatisch</button>
+      </div>
+      <div id="phaseHint" class="hint" style="margin-top:10px"></div>
+      <div class="btnrow" style="margin-top:10px">
+        <button class="sec" id="newBtn" style="flex:1">Neues Spiel</button>
+        <button class="sec" id="bakeBtn">Karte sichern</button>
+      </div>
+      <div class="saveinfo" id="saveInfo"></div>
+    </div>
+    <div class="card" id="cardPanel">
+      <h2>Deine Karten <span id="handCount"></span></h2>
+      <div class="hand" id="hand"></div>
+      <button id="tradeBtn" style="width:100%" disabled>Tauschen</button>
+      <div class="hint" style="margin-top:6px">3 gleiche oder 3 verschiedene (★ = Joker), nur in Phase 1.</div>
+    </div>
+    <div class="card"><h2>Verlauf</h2><div id="log"></div></div>
+  </aside>
+</main>
+
+<div class="overlay" id="conqOverlay"><div class="modal">
+  <h3>Land erobert! 🎉</h3><p class="hint" id="conqText"></p>
+  <div class="stepper"><button class="sec" id="cMinus">−</button><span class="bignum" id="cNum">1</span><button class="sec" id="cPlus">+</button></div>
+  <button id="cConfirm" style="width:100%">Truppen vorschieben</button>
+</div></div>
+
+<div class="overlay" id="fortOverlay"><div class="modal">
+  <h3>Truppen verschieben</h3><p class="hint" id="fortText"></p>
+  <div class="stepper"><button class="sec" id="fMinus">−</button><span class="bignum" id="fNum">1</span><button class="sec" id="fPlus">+</button></div>
+  <div class="btnrow"><button id="fConfirm" style="flex:1">Verschieben</button><button class="sec" id="fCancel">Abbrechen</button></div>
+  <div class="hint" id="fRule" style="margin-top:8px"></div>
+</div></div>
+
+<div class="overlay show" id="setupOverlay"><div class="modal">
+  <h3>Neues Spiel</h3>
+  <div id="resumeBox" style="display:none;margin-bottom:12px">
+    <button id="resumeBtn" style="width:100%">Gespeichertes Spiel fortsetzen</button>
+    <div class="saveinfo" id="resumeInfo"></div>
+  </div>
+  <div class="setup-grid" id="setupPlayers"></div>
+  <div class="btnrow" style="margin-top:12px">
+    <button class="sec" id="remPlayer">− Spieler</button><button class="sec" id="addPlayer">+ Spieler</button>
+  </div>
+  <label class="toggle"><input type="checkbox" id="optCap3" checked> Eroberung auf max. 3 begrenzen</label>
+  <label class="toggle"><input type="checkbox" id="optChain" checked> Ketten-Verschieben (Zwischenland-Regel)</label>
+  <label class="toggle"><input type="checkbox" id="optCards" checked> Spielkarten &amp; Tausch</label>
+  <label class="toggle"><input type="checkbox" id="optDraft" checked> Startaufstellung selbst wählen</label>
+  <button id="startBtn" style="width:100%;margin-top:16px">Spiel starten</button>
+</div></div>
+
+<div class="overlay" id="winOverlay"><div class="modal" style="text-align:center">
+  <h3 id="winText">🏆</h3><button id="restartBtn" style="width:100%;margin-top:12px">Neues Spiel</button>
+</div></div>
+
+<script>
+/* ===================== TEIL 1 — REGELKERN ===================== */
+const RiskEngine=(function(){
+const CONTINENTS={Nordamerika:{bonus:5},Suedamerika:{bonus:2},Europa:{bonus:5},
+  Afrika:{bonus:3},Asien:{bonus:7},Australien:{bonus:2}};
+const TERR={
+ alaska:{n:"Alaska",c:"Nordamerika"},nwterr:{n:"Nordwest-Terr.",c:"Nordamerika"},
+ greenland:{n:"Grönland",c:"Nordamerika"},alberta:{n:"Alberta",c:"Nordamerika"},
+ ontario:{n:"Ontario",c:"Nordamerika"},quebec:{n:"Québec",c:"Nordamerika"},
+ westus:{n:"Weststaaten",c:"Nordamerika"},eastus:{n:"Oststaaten",c:"Nordamerika"},
+ centralam:{n:"Mittelamerika",c:"Nordamerika"},
+ venezuela:{n:"Venezuela",c:"Suedamerika"},peru:{n:"Peru",c:"Suedamerika"},
+ brazil:{n:"Brasilien",c:"Suedamerika"},argentina:{n:"Argentinien",c:"Suedamerika"},
+ iceland:{n:"Island",c:"Europa"},greatbritain:{n:"Großbritannien",c:"Europa"},
+ scandinavia:{n:"Skandinavien",c:"Europa"},northerneu:{n:"Mitteleuropa",c:"Europa"},
+ westerneu:{n:"Westeuropa",c:"Europa"},southerneu:{n:"Südeuropa",c:"Europa"},
+ ukraine:{n:"Ukraine",c:"Europa"},
+ northafrica:{n:"Nordafrika",c:"Afrika"},egypt:{n:"Ägypten",c:"Afrika"},
+ eastafrica:{n:"Ostafrika",c:"Afrika"},congo:{n:"Kongo",c:"Afrika"},
+ southafrica:{n:"Südafrika",c:"Afrika"},madagascar:{n:"Madagaskar",c:"Afrika"},
+ ural:{n:"Ural",c:"Asien"},siberia:{n:"Sibirien",c:"Asien"},yakutsk:{n:"Jakutien",c:"Asien"},
+ kamchatka:{n:"Kamtschatka",c:"Asien"},irkutsk:{n:"Irkutsk",c:"Asien"},mongolia:{n:"Mongolei",c:"Asien"},
+ japan:{n:"Japan",c:"Asien"},afghanistan:{n:"Afghanistan",c:"Asien"},china:{n:"China",c:"Asien"},
+ middleeast:{n:"Mittlerer Osten",c:"Asien"},india:{n:"Indien",c:"Asien"},siam:{n:"Siam",c:"Asien"},
+ indonesia:{n:"Indonesien",c:"Australien"},newguinea:{n:"Neuguinea",c:"Australien"},
+ westaustralia:{n:"West-Australien",c:"Australien"},eastaustralia:{n:"Ost-Australien",c:"Australien"}};
+const ADJ={
+ alaska:["nwterr","alberta","kamchatka"],nwterr:["alaska","alberta","ontario","greenland"],
+ greenland:["nwterr","ontario","quebec","iceland"],alberta:["alaska","nwterr","ontario","westus"],
+ ontario:["nwterr","alberta","greenland","quebec","westus","eastus"],quebec:["greenland","ontario","eastus"],
+ westus:["alberta","ontario","eastus","centralam"],eastus:["ontario","quebec","westus","centralam"],
+ centralam:["westus","eastus","venezuela"],
+ venezuela:["centralam","peru","brazil"],peru:["venezuela","brazil","argentina"],
+ brazil:["venezuela","peru","argentina","northafrica"],argentina:["peru","brazil"],
+ iceland:["greenland","greatbritain","scandinavia"],greatbritain:["iceland","scandinavia","northerneu","westerneu"],
+ scandinavia:["iceland","greatbritain","northerneu","ukraine"],
+ northerneu:["greatbritain","scandinavia","ukraine","southerneu","westerneu"],
+ westerneu:["greatbritain","northerneu","southerneu","northafrica"],
+ southerneu:["northerneu","westerneu","ukraine","middleeast","egypt","northafrica"],
+ ukraine:["scandinavia","northerneu","southerneu","ural","afghanistan","middleeast"],
+ northafrica:["brazil","westerneu","southerneu","egypt","eastafrica","congo"],
+ egypt:["southerneu","northafrica","eastafrica","middleeast"],
+ eastafrica:["egypt","northafrica","congo","southafrica","madagascar","middleeast"],
+ congo:["northafrica","eastafrica","southafrica"],southafrica:["congo","eastafrica","madagascar"],
+ madagascar:["eastafrica","southafrica"],
+ ural:["ukraine","siberia","china","afghanistan"],siberia:["ural","yakutsk","irkutsk","mongolia","china"],
+ yakutsk:["siberia","irkutsk","kamchatka"],kamchatka:["yakutsk","irkutsk","mongolia","japan","alaska"],
+ irkutsk:["siberia","yakutsk","kamchatka","mongolia"],mongolia:["siberia","irkutsk","kamchatka","japan","china"],
+ japan:["kamchatka","mongolia"],afghanistan:["ukraine","ural","china","india","middleeast"],
+ china:["ural","siberia","mongolia","afghanistan","india","siam"],
+ middleeast:["ukraine","southerneu","egypt","eastafrica","afghanistan","india"],
+ india:["afghanistan","china","middleeast","siam"],siam:["china","india","indonesia"],
+ indonesia:["siam","newguinea","westaustralia"],newguinea:["indonesia","westaustralia","eastaustralia"],
+ westaustralia:["indonesia","newguinea","eastaustralia"],eastaustralia:["newguinea","westaustralia"]};
+const SYMS=["inf","kav","art"],START={2:40,3:35,4:30,5:25,6:20},NONE=-1;
+function rnd(s){s.rng=(s.rng+0x6D2B79F5)|0;let t=s.rng;t=Math.imul(t^(t>>>15),t|1);
+  t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;}
+function rint(s,n){return Math.floor(rnd(s)*n);}
+function shuffle(s,a){for(let i=a.length-1;i>0;i--){const j=rint(s,i+1);const t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function roll(s,n){const a=[];for(let i=0;i<n;i++)a.push(1+rint(s,6));return a.sort((x,y)=>y-x);}
+function clone(s){return JSON.parse(JSON.stringify(s));}
+function say(s,t,c,d){s.log.push({t:t,c:c||"l-sys",d:d||null});}
+function terrOf(s,pi){return Object.keys(TERR).filter(id=>s.owner[id]===pi);}
+function freeTerr(s){return Object.keys(TERR).filter(id=>s.owner[id]===NONE);}
+function contBonus(s,pi){let b=0;for(const c in CONTINENTS){
+  const m=Object.keys(TERR).filter(id=>TERR[id].c===c);
+  if(m.length&&m.every(id=>s.owner[id]===pi))b+=CONTINENTS[c].bonus;}return b;}
+function incomeOf(s,pi){return Math.max(3,Math.floor(terrOf(s,pi).length/3))+contBonus(s,pi);}
+function tradeValue(c){const V=[4,6,8,10,12,15];return c<6?V[c]:15+(c-5)*5;}
+function isValidSet(cs){if(!cs||cs.length!==3||cs.some(c=>!c))return false;
+  if(cs.some(c=>c.sym==="wild"))return true;
+  const u=new Set(cs.map(c=>c.sym));return u.size===1||u.size===3;}
+function mustTrade(s){return s.opts.cards&&s.phase==="reinforce"&&s.hands[s.cur].length>=5;}
+function fortifyCapOf(s,f){return s.fortCap[f]===undefined?Math.max(0,s.armies[f]-1):s.fortCap[f];}
+function fortifyMaxOf(s,f){return Math.max(0,Math.min(fortifyCapOf(s,f),s.armies[f]-1));}
+function inSetup(s){return s.phase==="claim"||s.phase==="deploy";}
+function buildDeck(s){const d=[];Object.keys(TERR).forEach((id,i)=>d.push({sym:SYMS[i%3]}));
+  d.push({sym:"wild"});d.push({sym:"wild"});return shuffle(s,d);}
+function createGame(players,opts,seed){
+  const s={players:players.map(p=>({name:p.name,color:p.color,alive:true})),owner:{},armies:{},
+    opts:{cap3:!!opts.cap3,chain:!!opts.chain,cards:!!opts.cards,draft:!!opts.draft},
+    cur:0,phase:"claim",reinf:0,toPlace:[],hands:players.map(()=>[]),deck:[],discard:[],
+    tradeCount:0,conquered:false,pending:null,fortCap:{},winner:null,rng:(seed>>>0)||1,log:[]};
+  Object.keys(TERR).forEach(id=>{s.owner[id]=NONE;s.armies[id]=0;});
+  const per=START[players.length]||30;s.toPlace=players.map(()=>per);s.deck=buildDeck(s);
+  say(s,"Spiel gestartet · "+players.length+" Spieler · je "+per+" Truppen.");
+  if(s.opts.draft){say(s,"Aufstellung: wählt reihum ein freies Land.");return s;}
+  return autoSetup(s);}
+function autoSetup(s){
+  while(freeTerr(s).length>0){const f=freeTerr(s);const id=f[rint(s,f.length)];
+    s.owner[id]=s.cur;s.armies[id]=1;s.toPlace[s.cur]--;s.cur=(s.cur+1)%s.players.length;}
+  let g=0;while(s.toPlace.some(n=>n>0)&&g++<5000){
+    if(s.toPlace[s.cur]>0){const m=terrOf(s,s.cur);s.armies[m[rint(s,m.length)]]++;s.toPlace[s.cur]--;}
+    s.cur=(s.cur+1)%s.players.length;}
+  say(s,"Aufstellung abgeschlossen.");s.cur=0;beginTurn(s);return s;}
+function nextDeployer(s){for(let i=1;i<=s.players.length;i++){const c=(s.cur+i)%s.players.length;
+  if(s.toPlace[c]>0){s.cur=c;return true;}}return false;}
+function beginTurn(s){let g=0;while(!s.players[s.cur].alive&&g++<12)s.cur=(s.cur+1)%s.players.length;
+  s.phase="reinforce";s.reinf=incomeOf(s,s.cur);s.conquered=false;s.pending=null;s.fortCap={};
+  say(s,s.players[s.cur].name+" am Zug · +"+s.reinf+" Truppen.");}
+function drawCard(s,pi){if(s.deck.length===0){s.deck=shuffle(s,s.discard);s.discard=[];}
+  if(s.deck.length===0)return;s.hands[pi].push(s.deck.pop());}
+function checkWin(s){const o=new Set(Object.keys(TERR).map(id=>s.owner[id]));
+  if(o.size===1){s.winner=[...o][0];say(s,s.players[s.winner].name+" gewinnt!","l-conq");}}
+function validate(s,a){
+  if(!s)return{ok:false,error:"Kein Spiel"};
+  if(s.winner!==null)return{ok:false,error:"Spiel ist beendet"};
+  if(s.pending&&a.type!=="OCCUPY")return{ok:false,error:"Erst Truppen ins eroberte Land setzen"};
+  if(inSetup(s)&&!["CLAIM","DEPLOY","AUTO_SETUP"].includes(a.type))return{ok:false,error:"Die Aufstellung läuft noch"};
+  if(!inSetup(s)&&["CLAIM","DEPLOY","AUTO_SETUP"].includes(a.type))return{ok:false,error:"Aufstellung ist abgeschlossen"};
+  switch(a.type){
+   case "CLAIM":
+    if(s.owner[a.terr]===undefined)return{ok:false,error:"Unbekanntes Land"};
+    if(s.owner[a.terr]!==NONE)return{ok:false,error:"Dieses Land ist schon vergeben"};
+    return{ok:true};
+   case "DEPLOY":
+    if(s.phase!=="deploy")return{ok:false,error:"Erst alle Länder verteilen"};
+    if(s.owner[a.terr]!==s.cur)return{ok:false,error:"Nicht dein Land"};
+    if(s.toPlace[s.cur]<=0)return{ok:false,error:"Keine Starttruppen übrig"};
+    return{ok:true};
+   case "AUTO_SETUP":return{ok:true};
+   case "PLACE":
+    if(s.phase!=="reinforce")return{ok:false,error:"Nur in der Verstärkungsphase"};
+    if(s.owner[a.terr]!==s.cur)return{ok:false,error:"Nicht dein Land"};
+    if(s.reinf<=0)return{ok:false,error:"Keine Truppen übrig"};
+    return{ok:true};
+   case "TRADE":{
+    if(!s.opts.cards)return{ok:false,error:"Karten deaktiviert"};
+    if(s.phase!=="reinforce")return{ok:false,error:"Tauschen nur in Phase 1"};
+    const ix=a.cards||[];
+    if(ix.length!==3)return{ok:false,error:"Genau 3 Karten wählen"};
+    if(new Set(ix).size!==3)return{ok:false,error:"Karte doppelt gewählt"};
+    const h=s.hands[s.cur];
+    if(ix.some(i=>i<0||i>=h.length))return{ok:false,error:"Karte existiert nicht"};
+    if(!isValidSet(ix.map(i=>h[i])))return{ok:false,error:"Ungültige Kombination"};
+    return{ok:true};}
+   case "ATTACK":
+    if(s.phase!=="attack")return{ok:false,error:"Nur in der Angriffsphase"};
+    if(s.owner[a.from]!==s.cur)return{ok:false,error:"Startland gehört dir nicht"};
+    if(s.owner[a.to]===s.cur)return{ok:false,error:"Eigenes Land angreifen geht nicht"};
+    if(!ADJ[a.from]||!ADJ[a.from].includes(a.to))return{ok:false,error:"Länder grenzen nicht aneinander"};
+    if(s.armies[a.from]<2)return{ok:false,error:"Mindestens 2 Truppen nötig"};
+    return{ok:true};
+   case "OCCUPY":
+    if(!s.pending)return{ok:false,error:"Nichts zu besetzen"};
+    if(!Number.isInteger(a.count)||a.count<1||a.count>s.pending.max)
+      return{ok:false,error:"Anzahl muss 1–"+s.pending.max+" sein"};
+    return{ok:true};
+   case "FORTIFY":{
+    if(s.phase!=="fortify")return{ok:false,error:"Nur in der Verschiebephase"};
+    if(s.owner[a.from]!==s.cur||s.owner[a.to]!==s.cur)return{ok:false,error:"Beide Länder müssen dir gehören"};
+    if(!ADJ[a.from]||!ADJ[a.from].includes(a.to))return{ok:false,error:"Länder grenzen nicht aneinander"};
+    if(s.armies[a.from]<2)return{ok:false,error:"Mindestens 1 Truppe muss bleiben"};
+    const mx=fortifyMaxOf(s,a.from);
+    if(mx<=0)return{ok:false,error:"Dieses Land kann diesen Zug nichts mehr abgeben"};
+    if(a.count!==undefined&&(!Number.isInteger(a.count)||a.count<1||a.count>mx))
+      return{ok:false,error:"Anzahl muss 1–"+mx+" sein"};
+    return{ok:true};}
+   case "END_PHASE":
+    if(s.phase==="reinforce"&&s.reinf>0)return{ok:false,error:"Erst alle Truppen setzen"};
+    if(mustTrade(s))return{ok:false,error:"Bei 5+ Karten musst du erst tauschen"};
+    return{ok:true};
+   default:return{ok:false,error:"Unbekannte Aktion"};}}
+function apply(state,a){
+  const v=validate(state,a);
+  if(!v.ok)return{ok:false,error:v.error,state:state};
+  const s=clone(state);
+  switch(a.type){
+   case "CLAIM":{s.owner[a.terr]=s.cur;s.armies[a.terr]=1;s.toPlace[s.cur]--;
+     if(freeTerr(s).length===0){say(s,"Alle Länder vergeben. Jetzt Starttruppen setzen.");
+       s.phase="deploy";s.cur=0;if(s.toPlace[0]<=0&&!nextDeployer(s)){s.cur=0;beginTurn(s);}}
+     else s.cur=(s.cur+1)%s.players.length;break;}
+   case "DEPLOY":{s.armies[a.terr]++;s.toPlace[s.cur]--;
+     if(!s.toPlace.some(n=>n>0)){say(s,"Aufstellung abgeschlossen.");s.cur=0;beginTurn(s);}
+     else nextDeployer(s);break;}
+   case "AUTO_SETUP":return{ok:true,state:autoSetup(s)};
+   case "PLACE":s.armies[a.terr]++;s.reinf--;break;
+   case "TRADE":{const h=s.hands[s.cur];
+     [...a.cards].sort((x,y)=>y-x).forEach(i=>{s.discard.push(h[i]);h.splice(i,1);});
+     const val=tradeValue(s.tradeCount);s.tradeCount++;s.reinf+=val;
+     say(s,"Karten getauscht → +"+val+" Truppen.","l-card");break;}
+   case "ATTACK":{
+     const aD=roll(s,Math.min(3,s.armies[a.from]-1)),dD=roll(s,Math.min(2,s.armies[a.to]));
+     let aL=0,dL=0;for(let i=0;i<Math.min(aD.length,dD.length);i++){if(aD[i]>dD[i])dL++;else aL++;}
+     s.armies[a.from]-=aL;s.armies[a.to]-=dL;
+     say(s,s.players[s.cur].name+" greift "+TERR[a.to].n+" an · A −"+aL+", V −"+dL,"l-att",{a:aD,d:dD});
+     if(s.armies[a.to]<=0){const loser=s.owner[a.to];s.owner[a.to]=s.cur;s.conquered=true;
+       const mx=s.opts.cap3?Math.min(3,s.armies[a.from]-1):(s.armies[a.from]-1);
+       s.pending={type:"occupy",from:a.from,to:a.to,max:Math.max(1,mx)};
+       if(terrOf(s,loser).length===0&&s.players[loser].alive){s.players[loser].alive=false;
+         const tk=s.hands[loser].length;
+         if(tk>0){s.hands[s.cur]=s.hands[s.cur].concat(s.hands[loser]);s.hands[loser]=[];
+           say(s,s.players[s.cur].name+" übernimmt "+tk+" Karte"+(tk===1?"":"n")+".","l-card");}
+         say(s,s.players[loser].name+" ist ausgeschieden.");}}
+     break;}
+   case "OCCUPY":{const p=s.pending;s.armies[p.from]-=a.count;s.armies[p.to]=a.count;s.pending=null;
+     say(s,a.count+" Truppen nach "+TERR[p.to].n+" vorgeschoben.","l-conq");checkWin(s);break;}
+   case "FORTIFY":{const cap=fortifyCapOf(s,a.from);
+     const mv=(a.count===undefined)?fortifyMaxOf(s,a.from):a.count;
+     s.armies[a.from]-=mv;s.armies[a.to]+=mv;s.fortCap[a.from]=cap-mv;
+     say(s,mv+" Truppen von "+TERR[a.from].n+" nach "+TERR[a.to].n+" (Rest: "+s.fortCap[a.from]+").");break;}
+   case "END_PHASE":{
+     if(s.phase==="reinforce")s.phase="attack";
+     else if(s.phase==="attack"){s.phase="fortify";s.fortCap={};
+       Object.keys(TERR).forEach(id=>{if(s.owner[id]===s.cur)s.fortCap[id]=Math.max(0,s.armies[id]-1);});}
+     else{if(s.opts.cards&&s.conquered){drawCard(s,s.cur);say(s,s.players[s.cur].name+" zieht eine Karte.","l-card");}
+       s.cur=(s.cur+1)%s.players.length;beginTurn(s);}
+     break;}}
+  return{ok:true,state:s};}
+return{CONTINENTS,TERR,ADJ,NONE,createGame,apply,validate,terrOf,freeTerr,incomeOf,
+  tradeValue,isValidSet,mustTrade,fortifyCapOf,fortifyMaxOf,inSetup};
+})();
+
+/* ===================== TEIL 2 — WELTKARTE (vollständig im Code) =====================
+   Ich zeichne die Landmassen als Umrisse. Jedes Land bekommt einen Ankerpunkt.
+   Das Programm rastert die Landmassen und gibt jedes Rasterfeld dem nächsten
+   Anker – so entstehen lückenlos aneinandergrenzende Länder. Aus dem Raster
+   werden die Grenzlinien verfolgt, vereinfacht und weich gerundet.               */
+const WorldMap=(function(){
+const W=1000,H=800,CELL=2.5,GW=Math.round(W/CELL),GH=Math.round(H/CELL);
+
+/* Umrisse der Landmassen */
+const LAND=[
+ {n:"Nordamerika",p:[[70,150],[95,105],[160,95],[232,100],[300,116],[360,140],[396,190],[370,250],
+   [330,292],[300,332],[256,360],[216,396],[186,422],[150,432],[130,406],[120,370],[96,330],[80,286],[60,220],[64,176]],
+  t:["alaska","nwterr","alberta","ontario","quebec","westus","eastus","centralam"]},
+ {n:"Grönland",p:[[400,55],[470,50],[496,90],[480,142],[440,152],[404,110]],t:["greenland"]},
+ {n:"Südamerika",p:[[160,455],[216,440],[266,456],[300,500],[302,562],[276,622],[240,662],[216,722],
+   [196,762],[176,730],[166,660],[150,600],[145,530]],t:["venezuela","peru","brazil","argentina"]},
+ {n:"Island",p:[[420,160],[450,160],[458,180],[440,196],[418,186]],t:["iceland"]},
+ {n:"Großbritannien",p:[[392,296],[416,292],[430,320],[414,350],[392,344]],t:["greatbritain"]},
+ {n:"Eurasien",p:[[440,310],[452,252],[478,208],[508,172],[548,186],[566,224],[610,205],[668,178],
+   [730,148],[800,120],[866,104],[918,124],[948,166],[936,214],[952,254],[922,292],[872,306],
+   [846,342],[826,388],[796,428],[806,470],[772,492],[742,458],[712,486],[686,470],[664,432],
+   [632,462],[598,478],[566,446],[544,404],[516,424],[486,404],[462,392],[444,352]],
+  t:["scandinavia","northerneu","westerneu","southerneu","ukraine","ural","siberia","yakutsk",
+     "irkutsk","kamchatka","mongolia","afghanistan","china","middleeast","india","siam"]},
+ {n:"Afrika",p:[[400,470],[452,452],[500,448],[548,452],[566,470],[586,510],[596,560],[588,610],
+   [560,660],[534,702],[506,690],[492,650],[470,610],[444,570],[414,530]],
+  t:["northafrica","egypt","eastafrica","congo","southafrica"]},
+ {n:"Madagaskar",p:[[604,610],[624,606],[632,640],[620,672],[602,650]],t:["madagascar"]},
+ {n:"Japan",p:[[900,318],[922,308],[934,336],[918,364],[900,346]],t:["japan"]},
+ {n:"Indonesien",p:[[800,506],[850,498],[882,514],[866,538],[816,536]],t:["indonesia"]},
+ {n:"Neuguinea",p:[[896,518],[946,512],[958,542],[916,554]],t:["newguinea"]},
+ {n:"Australien",p:[[810,600],[870,588],[930,596],[952,634],[936,678],[884,692],[836,676],[806,640]],
+  t:["westaustralia","eastaustralia"]}
+];
+/* Ankerpunkte – bestimmen, wo ein Land innerhalb seiner Landmasse liegt */
+const SEED={
+ alaska:[104,140],nwterr:[196,146],alberta:[158,212],ontario:[254,236],quebec:[344,214],
+ westus:[140,286],eastus:[236,318],centralam:[140,382],greenland:[440,92],
+ venezuela:[200,466],peru:[184,600],brazil:[258,552],argentina:[192,690],
+ iceland:[437,177],greatbritain:[410,320],scandinavia:[506,214],northerneu:[520,318],
+ westerneu:[470,362],southerneu:[520,392],ukraine:[586,254],
+ northafrica:[440,516],egypt:[528,478],eastafrica:[560,536],congo:[506,582],southafrica:[532,652],
+ madagascar:[616,638],
+ ural:[664,222],siberia:[748,178],yakutsk:[854,138],kamchatka:[906,236],irkutsk:[806,224],
+ mongolia:[792,318],japan:[915,338],afghanistan:[648,338],china:[752,376],middleeast:[600,442],
+ india:[692,448],siam:[772,462],
+ indonesia:[840,518],newguinea:[924,532],westaustralia:[848,628],eastaustralia:[916,638]};
+/* Grundfarben je Kontinent (aus der Vorlage) */
+const CCOL={Nordamerika:"#f0a93c",Suedamerika:"#d8493f",Europa:"#3f7fd6",
+  Afrika:"#a9743f",Asien:"#5aa845",Australien:"#d33f97"};
+
+const TERR=RiskEngine.TERR,IDS=Object.keys(TERR);
+let cellT=new Int16Array(GW*GH).fill(-1);
+let polys={},center={},color={},touch=new Set(),paths=null;
+
+function inPoly(x,y,p){let c=false;
+  for(let i=0,j=p.length-1;i<p.length;j=i++){
+    const xi=p[i][0],yi=p[i][1],xj=p[j][0],yj=p[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c;}
+  return c;}
+function bbox(p){let a=1e9,b=1e9,c=-1e9,d=-1e9;
+  p.forEach(q=>{a=Math.min(a,q[0]);b=Math.min(b,q[1]);c=Math.max(c,q[0]);d=Math.max(d,q[1]);});
+  return[a,b,c,d];}
+function perp(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
+  if(L<1e-9)return Math.hypot(p[0]-a[0],p[1]-a[1]);
+  return Math.abs(dy*p[0]-dx*p[1]+b[0]*a[1]-b[1]*a[0])/L;}
+function rdp(pts,eps){if(pts.length<3)return pts;
+  let im=0,dm=0;const a=pts[0],b=pts[pts.length-1];
+  for(let i=1;i<pts.length-1;i++){const d=perp(pts[i],a,b);if(d>dm){dm=d;im=i;}}
+  if(dm>eps)return rdp(pts.slice(0,im+1),eps).slice(0,-1).concat(rdp(pts.slice(im),eps));
+  return[a,b];}
+function chaikin(p,it){for(let k=0;k<it;k++){const q=[];
+  for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];
+    q.push([a[0]*0.75+b[0]*0.25,a[1]*0.75+b[1]*0.25]);
+    q.push([a[0]*0.25+b[0]*0.75,a[1]*0.25+b[1]*0.75]);}
+  p=q;}return p;}
+
+function build(){
+  const idx={};IDS.forEach((id,i)=>idx[id]=i);
+  // 1. Rastern: welches Land liegt in welchem Feld?
+  LAND.forEach(L=>{
+    const bb=bbox(L.p);
+    const seeds=L.t.map(id=>({id,x:SEED[id][0],y:SEED[id][1]}));
+    const i0=Math.max(0,Math.floor(bb[0]/CELL)),i1=Math.min(GW-1,Math.ceil(bb[2]/CELL));
+    const j0=Math.max(0,Math.floor(bb[1]/CELL)),j1=Math.min(GH-1,Math.ceil(bb[3]/CELL));
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+      const x=(i+0.5)*CELL,y=(j+0.5)*CELL;
+      if(!inPoly(x,y,L.p))continue;
+      let best=null,bd=1e12;
+      seeds.forEach(s=>{const dx=x-s.x,dy=y-s.y,d=dx*dx+dy*dy;if(d<bd){bd=d;best=s;}});
+      cellT[j*GW+i]=idx[best.id];
+    }
+  });
+  // 2. Grenzlinien verfolgen
+  const em=IDS.map(()=>new Map());
+  const key=(x,y)=>x+","+y;
+  const mark=(a,b)=>{if(a>=0&&b>=0&&a!==b)touch.add(Math.min(a,b)+"-"+Math.max(a,b));};
+  for(let j=0;j<GH;j++)for(let i=0;i<GW;i++){
+    const t=cellT[j*GW+i];if(t<0)continue;
+    const up=j>0?cellT[(j-1)*GW+i]:-1,dn=j<GH-1?cellT[(j+1)*GW+i]:-1;
+    const lf=i>0?cellT[j*GW+i-1]:-1,rt=i<GW-1?cellT[j*GW+i+1]:-1;
+    const m=em[t];
+    const add=(x1,y1,x2,y2)=>{const k=key(x1,y1);let a=m.get(k);if(!a){a=[];m.set(k,a);}a.push([x2,y2]);};
+    if(up!==t){add(i,j,i+1,j);mark(t,up);}
+    if(rt!==t){add(i+1,j,i+1,j+1);mark(t,rt);}
+    if(dn!==t){add(i+1,j+1,i,j+1);mark(t,dn);}
+    if(lf!==t){add(i,j+1,i,j);mark(t,lf);}
+  }
+  IDS.forEach((id,t)=>{
+    const m=em[t];if(!m.size)return;
+    const loops=[];let guard=0;
+    while(m.size&&guard++<2000){
+      const start=m.keys().next().value;let cur=start;const loop=[];let st=0;
+      while(st++<60000){
+        const arr=m.get(cur);if(!arr||!arr.length){m.delete(cur);break;}
+        const n=arr.pop();if(!arr.length)m.delete(cur);
+        loop.push(cur.split(",").map(Number));
+        cur=key(n[0],n[1]);if(cur===start)break;}
+      if(loop.length>16)loops.push(loop);
+    }
+    const out=[];
+    loops.forEach(l=>{let s=rdp(l,0.9);if(s.length<4)return;
+      s=chaikin(s,2);out.push(s.map(q=>[q[0]*CELL,q[1]*CELL]));});
+    out.sort((a,b)=>b.length-a.length);
+    if(out.length)polys[id]=out.slice(0,4);
+  });
+  // 3. Mittelpunkte und Farben
+  const acc={};
+  for(let j=0;j<GH;j++)for(let i=0;i<GW;i++){const t=cellT[j*GW+i];if(t<0)continue;
+    const id=IDS[t];(acc[id]=acc[id]||{x:0,y:0,n:0});
+    acc[id].x+=(i+0.5)*CELL;acc[id].y+=(j+0.5)*CELL;acc[id].n++;}
+  IDS.forEach((id,k)=>{
+    if(acc[id])center[id]={x:acc[id].x/acc[id].n,y:acc[id].y/acc[id].n};
+    else center[id]={x:SEED[id][0],y:SEED[id][1]};
+    const base=CCOL[TERR[id].c]||"#8a8";
+    const n=parseInt(base.slice(1),16);
+    const f=0.86+((k*37)%5)*0.07;      // leichte Schattierung je Land
+    const r=Math.min(255,Math.round(((n>>16)&255)*f));
+    const g=Math.min(255,Math.round(((n>>8)&255)*f));
+    const b=Math.min(255,Math.round((n&255)*f));
+    color[id]=[r,g,b];
+  });
+  // 4. Zeichenpfade
+  paths={all:new Path2D(),per:{}};
+  for(const id in polys){
+    const p=new Path2D();
+    polys[id].forEach(loop=>{
+      p.moveTo(loop[0][0],loop[0][1]);
+      for(let i=1;i<loop.length;i++)p.lineTo(loop[i][0],loop[i][1]);
+      p.closePath();
+      paths.all.moveTo(loop[0][0],loop[0][1]);
+      for(let i=1;i<loop.length;i++)paths.all.lineTo(loop[i][0],loop[i][1]);
+      paths.all.closePath();});
+    paths.per[id]=p;
+  }
+}
+function at(x,y){
+  const i=Math.floor(x/CELL),j=Math.floor(y/CELL);
+  if(i<0||j<0||i>=GW||j>=GH)return null;
+  const t=cellT[j*GW+i];return t<0?null:IDS[t];}
+function seaLinks(){
+  const idx={};IDS.forEach((id,i)=>idx[id]=i);
+  const out=[];
+  for(const a in RiskEngine.ADJ)RiskEngine.ADJ[a].forEach(b=>{
+    if(a>=b)return;
+    const t1=idx[a],t2=idx[b];
+    if(touch.has(Math.min(t1,t2)+"-"+Math.max(t1,t2)))return;
+    out.push([center[a],center[b]]);});
+  return out;}
+build();
+return{W,H,at,seaLinks,get paths(){return paths;},get center(){return center;},
+  get color(){return color;},LAND};
+})();
+
+</script>
+<script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>
+<script src="risiko-karte.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ===================== TEIL 3 — OBERFLÄCHE ===================== */
+const E=RiskEngine,TERR=E.TERR,ADJ=E.ADJ,NONE=E.NONE,M=SvgMap;
+const PC=["#ff5470","#4da3ff","#37d67a","#ffd166","#b980ff","#ff9f43"];
+const SYM={inf:"I",kav:"K",art:"A",wild:"★"};
+const KEY="risiko.save.v3";
+const $=id=>document.getElementById(id);
+const cv=$("board"),lab=$("labels"),lctx=lab.getContext("2d");
+let G=null,sel=null,selCards=[],occupyVal=1,moveCtx=null,logShown=0,hover=null,mapError=null;
+
+function store(k,v){try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
+function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function del(k){try{localStorage.removeItem(k);}catch(e){}}
+function hex2rgb(h){const n=parseInt(h.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];}
+function mixRGB(c,hex,t){const b=hex2rgb(hex);
+  return"rgb("+Math.round(c[0]+(b[0]-c[0])*t)+","+Math.round(c[1]+(b[1]-c[1])*t)+","+
+    Math.round(c[2]+(b[2]-c[2])*t)+")";}
+
+function dispatch(a){const r=E.apply(G,a);if(!r.ok){flash(r.error);return false;}
+  G=r.state;render();save();return true;}
+function flash(m){const d=$("log");const p=document.createElement("div");
+  p.className="l-err";p.textContent="⚠ "+m;d.appendChild(p);d.scrollTop=d.scrollHeight;}
+function save(){if(!G)return;const ok=store(KEY,JSON.stringify({at:Date.now(),g:G}));
+  $("saveInfo").textContent=ok?("Gespeichert · "+new Date().toLocaleTimeString()):"";}
+function loadSave(){const r=load(KEY);if(!r)return null;
+  try{const o=JSON.parse(r);return o&&o.g?o:null;}catch(e){return null;}}
+function showResume(){const s=loadSave();
+  if(!s){$("resumeBox").style.display="none";return;}
+  $("resumeBox").style.display="block";
+  $("resumeInfo").textContent=s.g.players.map(p=>p.name).join(", ")+" · "+new Date(s.at).toLocaleString();}
+$("resumeBtn").onclick=()=>{const s=loadSave();if(!s)return;
+  G=s.g;sel=null;selCards=[];logShown=0;$("log").innerHTML="";
+  $("cardPanel").style.display=G.opts.cards?"block":"none";
+  $("setupOverlay").classList.remove("show");render();};
+
+let names=["Spieler 1","Spieler 2","Spieler 3"];
+function renderSetup(){const box=$("setupPlayers");box.innerHTML="";
+  names.forEach((nm,i)=>{const w=document.createElement("div");
+    w.innerHTML='<label><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:'+PC[i]+';margin-right:6px"></span>Spieler '+(i+1)+'</label>';
+    const inp=document.createElement("input");inp.type="text";inp.value=nm;
+    inp.oninput=e=>names[i]=e.target.value;w.appendChild(inp);box.appendChild(w);});}
+$("addPlayer").onclick=()=>{if(names.length<6){names.push("Spieler "+(names.length+1));renderSetup();}};
+$("remPlayer").onclick=()=>{if(names.length>2){names.pop();renderSetup();}};
+renderSetup();showResume();
+$("startBtn").onclick=()=>{
+  const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:PC[i]}));
+  G=E.createGame(pl,{cap3:$("optCap3").checked,chain:$("optChain").checked,
+    cards:$("optCards").checked,draft:$("optDraft").checked},(Date.now()^(Math.random()*1e9))>>>0);
+  sel=null;selCards=[];logShown=0;$("log").innerHTML="";
+  $("cardPanel").style.display=G.opts.cards?"block":"none";
+  $("setupOverlay").classList.remove("show");render();save();};
+$("restartBtn").onclick=()=>{$("winOverlay").classList.remove("show");del(KEY);showResume();$("setupOverlay").classList.add("show");};
+$("newBtn").onclick=()=>{showResume();$("setupOverlay").classList.add("show");};
+$("bakeBtn").onclick=()=>{
+  if(!M.ready){flash("Erst die Karte einrichten.");return;}
+  const blob=new Blob(["window.RISIKO_MAP="+M.serialize()+";"],{type:"text/javascript"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="risiko-daten.js";document.body.appendChild(a);a.click();
+  document.body.removeChild(a);
+  flash("risiko-daten.js gespeichert – lege sie neben die HTML-Datei.");};
+
+function clickTerr(id){
+  if(!G||G.winner!==null||G.pending||moveCtx)return;
+  if(G.phase==="claim"){dispatch({type:"CLAIM",terr:id});return;}
+  if(G.phase==="deploy"){dispatch({type:"DEPLOY",terr:id});return;}
+  if(G.phase==="reinforce"){dispatch({type:"PLACE",terr:id});return;}
+  const mine=G.owner[id]===G.cur&&G.armies[id]>1;
+  if(sel===null){if(mine){sel=id;render();}return;}
+  if(id===sel){sel=null;render();return;}
+  if(ADJ[sel].includes(id)){
+    if(G.phase==="attack"&&G.owner[id]!==G.cur){dispatch({type:"ATTACK",from:sel,to:id});return;}
+    if(G.phase==="fortify"&&G.owner[id]===G.cur){openMove(sel,id);return;}}
+  if(mine){sel=id;render();}}
+function openMove(from,to){
+  const mx=E.fortifyMaxOf(G,from);
+  if(mx<=0){flash(TERR[from].n+" kann diesen Zug nichts mehr abgeben.");return;}
+  moveCtx={from,to,max:mx,val:mx};
+  $("fortText").innerHTML="Von <b>"+TERR[from].n+"</b> nach <b>"+TERR[to].n+"</b> · wähle 1–"+mx+".";
+  $("fRule").textContent=TERR[from].n+" darf diesen Zug noch "+E.fortifyCapOf(G,from)+" abgeben, 1 muss bleiben.";
+  $("fNum").textContent=mx;$("fortOverlay").classList.add("show");}
+$("fMinus").onclick=()=>{if(moveCtx&&moveCtx.val>1){moveCtx.val--;$("fNum").textContent=moveCtx.val;}};
+$("fPlus").onclick=()=>{if(moveCtx&&moveCtx.val<moveCtx.max){moveCtx.val++;$("fNum").textContent=moveCtx.val;}};
+$("fCancel").onclick=()=>{moveCtx=null;$("fortOverlay").classList.remove("show");};
+$("fConfirm").onclick=()=>{if(!moveCtx)return;
+  const ok=dispatch({type:"FORTIFY",from:moveCtx.from,to:moveCtx.to,count:moveCtx.val});
+  $("fortOverlay").classList.remove("show");moveCtx=null;if(ok){sel=null;render();}};
+$("nextPhase").onclick=()=>{sel=null;selCards=[];dispatch({type:"END_PHASE"});};
+$("skipAtk").onclick=()=>{sel=null;dispatch({type:"END_PHASE"});};
+$("autoBtn").onclick=()=>dispatch({type:"AUTO_SETUP"});
+$("tradeBtn").onclick=()=>{if(dispatch({type:"TRADE",cards:[...selCards]}))selCards=[];};
+$("cMinus").onclick=()=>{if(occupyVal>1){occupyVal--;$("cNum").textContent=occupyVal;}};
+$("cPlus").onclick=()=>{if(G.pending&&occupyVal<G.pending.max){occupyVal++;$("cNum").textContent=occupyVal;}};
+$("cConfirm").onclick=()=>dispatch({type:"OCCUPY",count:occupyVal});
+
+function isTarget(id){
+  if(!G||sel===null||!ADJ[sel]||!ADJ[sel].includes(id))return false;
+  if(G.phase==="attack")return G.owner[id]!==G.cur;
+  if(G.phase==="fortify")return G.owner[id]===G.cur;
+  return false;}
+
+/* ---------- 3D-Brett (Three.js) ----------
+   Jedes Gebiet wird aus seinem Umriss zu einer 3D-Platte mit Klippe
+   hochgezogen. Klicken läuft über Raycasting (ein Strahl von der Kamera),
+   das ist zuverlässig und unabhängig von jeder Koordinatenrechnung.       */
+const Board3D=(function(){
+const S=0.09,PLATE=1.6;         // Maßstab und Plattenhöhe
+let scene,cam,rend,ray,mouse,meshes={},group,sea,ready=false;
+let ang=0,tilt=0.9,dist=95,tAng=0,tTilt=0.9,tDist=95,dragging=false,panning=false,rotating=false,lx=0,ly=0,didDrag=false;
+let panX=0,panZ=0;
+const CX=M.W/2,CY=M.H/2;
+function mapPt(x,y){return[(x-CX)*S,-(y-CY)*S];}   // Karte auf XZ-Ebene
+
+function mixRGBraw(a,b,t){return[Math.round(a[0]+(b[0]-a[0])*t),
+  Math.round(a[1]+(b[1]-a[1])*t),Math.round(a[2]+(b[2]-a[2])*t)];}
+function colorHex(id){
+  const c=M.color[id]||[140,150,160];
+  let col=[c[0],c[1],c[2]];                     // herrenlos = volle Kontinentfarbe
+  if(G){const o=G.owner[id];
+    if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),0.55);}
+  return(col[0]<<16)|(col[1]<<8)|col[2];}
+
+function build(){
+  const THREE=window.THREE;
+  scene=new THREE.Scene();
+  const wrap=$("stage"),w=wrap.clientWidth||900,h=wrap.clientHeight||560;
+  cam=new THREE.PerspectiveCamera(42,w/h,1,1000);
+  rend=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  rend.setSize(w,h,false);rend.setPixelRatio(Math.min(2,devicePixelRatio||1));
+  rend.setClearColor(0x0d1526,1);
+  scene.add(new THREE.HemisphereLight(0xcfe3ee,0x2a4256,0.6));
+  const sun=new THREE.DirectionalLight(0xfff4e0,0.55);sun.position.set(-40,80,30);scene.add(sun);
+  // Meer
+  const seaGeo=new THREE.PlaneGeometry(M.W*S*2.2,M.H*S*2.2);
+  const seaMat=new THREE.MeshLambertMaterial({color:0x5aa6b8});
+  sea=new THREE.Mesh(seaGeo,seaMat);sea.rotation.x=-Math.PI/2;sea.position.y=-0.4;scene.add(sea);
+  group=new THREE.Group();scene.add(group);
+  const polys=M.polys;
+  for(const id in polys){
+    const gmesh=new THREE.Group();gmesh.userData.id=id;
+    polys[id].forEach(loop=>{
+      if(loop.length<4)return;
+      const shape=new THREE.Shape();
+      loop.forEach((p,i)=>{const q=mapPt(p[0],p[1]);
+        if(i===0)shape.moveTo(q[0],q[1]);else shape.lineTo(q[0],q[1]);});
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:false});
+      geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
+      const top=new THREE.MeshLambertMaterial({color:colorHex(id),side:THREE.DoubleSide});
+      const side=new THREE.MeshLambertMaterial({color:0x5b4633,side:THREE.DoubleSide});
+      const mesh=new THREE.Mesh(geo,[top,side]);
+      mesh.userData.id=id;gmesh.add(mesh);
+    });
+    group.add(gmesh);meshes[id]=gmesh;
+  }
+  ray=new THREE.Raycaster();mouse=new THREE.Vector2();
+  bindInput();sizeLabels();ready=true;loop();
+}
+function recolor(){
+  for(const id in meshes)meshes[id].children.forEach(m=>{
+    let col=colorHex(id);
+    if(sel===id)col=0xffffff;
+    else if(isTarget(id))col=0xf2f2f2;
+    else if(hover===id)col=lighten(colorHex(id));
+    m.material[0].color.setHex(col);});
+}
+function lighten(hex){const r=Math.min(255,((hex>>16)&255)+40),
+  g=Math.min(255,((hex>>8)&255)+40),b=Math.min(255,(hex&255)+40);return(r<<16)|(g<<8)|b;}
+
+function camPos(){
+  const y=Math.sin(tilt)*dist, r=Math.cos(tilt)*dist;
+  cam.position.set(panX+Math.sin(ang)*r,y,panZ+Math.cos(ang)*r);
+  cam.lookAt(panX,0,panZ);}   // Blickmittelpunkt lässt sich verschieben (Pan)
+function loop(){
+  ang+=(tAng-ang)*0.12;tilt+=(tTilt-tilt)*0.12;dist+=(tDist-dist)*0.12;
+  camPos();rend.render(scene,cam);drawLabels();requestAnimationFrame(loop);}
+
+function sizeLabels(){const wrap=$("stage");
+  lab.width=wrap.clientWidth;lab.height=wrap.clientHeight;}
+function toScreen(v){const THREE=window.THREE;
+  const p=v.clone().project(cam);
+  return[(p.x*0.5+0.5)*lab.width,(-p.y*0.5+0.5)*lab.height,p.z];}
+function drawLabels(){
+  lctx.clearRect(0,0,lab.width,lab.height);
+  if(!G)return;
+  const THREE=window.THREE;
+  lctx.textAlign="center";lctx.textBaseline="middle";
+  Object.keys(TERR).forEach(id=>{
+    const c=M.center[id];if(!c)return;
+    const q=mapPt(c.x,c.y);
+    // Platten liegen bei Welt-Z = -q[1] (Vorzeichen muss zur Extrusion passen)
+    const s=toScreen(new THREE.Vector3(q[0],PLATE+0.4,-q[1]));
+    if(s[2]>1)return;
+    const x=s[0],y=s[1],o=G.owner[id],n=G.armies[id];
+    lctx.font="600 12px system-ui,sans-serif";
+    lctx.lineWidth=3;lctx.strokeStyle="rgba(10,25,20,.7)";
+    lctx.strokeText(TERR[id].n,x,y-15);
+    lctx.fillStyle="#fff";lctx.fillText(TERR[id].n,x,y-15);
+    lctx.beginPath();lctx.arc(x,y+3,12,0,6.3);
+    lctx.fillStyle="rgba(12,18,30,.85)";lctx.fill();
+    lctx.lineWidth=3;lctx.strokeStyle=o===NONE?"#9aa7bd":G.players[o].color;lctx.stroke();
+    lctx.fillStyle="#fff";lctx.font="700 13px system-ui,sans-serif";
+    lctx.fillText(n>0?n:"–",x,y+3.5);});
+}
+function pick(ev){
+  const r=cv.getBoundingClientRect();
+  mouse.x=((ev.clientX-r.left)/r.width)*2-1;
+  mouse.y=-((ev.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse,cam);
+  const hit=ray.intersectObjects(group.children,true);
+  return hit.length?hit[0].object.userData.id:null;}
+function bindInput(){
+  cv.addEventListener("mousedown",e=>{
+    lx=e.clientX;ly=e.clientY;didDrag=false;
+    if(e.button===0)rotating=true;                     // links = Drehen (+ Klick)
+    else if(e.button===2){panning=true;e.preventDefault();}   // rechts = Verschieben
+    else if(e.button===1){panning=true;e.preventDefault();}   // Mausrad = auch Verschieben
+  });
+  cv.addEventListener("contextmenu",e=>e.preventDefault());
+  window.addEventListener("mouseup",e=>{
+    if(rotating&&!didDrag){const id=pick(e);if(id)clickTerr(id);}   // linker Klick = auswählen
+    dragging=false;rotating=false;panning=false;});
+  window.addEventListener("mousemove",e=>{
+    const dx=e.clientX-lx,dy=e.clientY-ly;
+    if(panning){
+      const k=dist*0.0016;
+      const rx=Math.cos(ang),rz=-Math.sin(ang);
+      const fx=-Math.sin(ang),fz=-Math.cos(ang);
+      // Vertikale umgedreht: fühlt sich an wie das Greifen der Karte
+      panX-=(rx*dx-fx*dy)*k;panZ-=(rz*dx-fz*dy)*k;
+      lx=e.clientX;ly=e.clientY;
+    }else if(rotating){
+      if(Math.abs(dx)+Math.abs(dy)>4)didDrag=true;
+      tAng-=dx*0.008;tTilt=Math.max(0.35,Math.min(1.45,tTilt+dy*0.005));
+      lx=e.clientX;ly=e.clientY;ang=tAng;tilt=tTilt;
+    }else{const id=pick(e);if(id!==hover){hover=id;recolor();}}});
+  cv.addEventListener("wheel",e=>{e.preventDefault();
+    tDist=Math.max(45,Math.min(160,tDist+e.deltaY*0.05));},{passive:false});
+  window.addEventListener("resize",()=>{const wrap=$("stage");
+    const w=wrap.clientWidth,h=wrap.clientHeight;
+    cam.aspect=w/h;cam.updateProjectionMatrix();rend.setSize(w,h,false);sizeLabels();});
+}
+return{
+  build,recolor,ready:()=>ready,
+  setView(i){tAng=i*Math.PI/2;panX=0;panZ=0;},
+  toggleTilt(){tTilt=tTilt>0.7?0.5:1.15;},
+  refresh(){if(ready)recolor();}
+};
+})();
+
+function drawBoard(){if(Board3D.ready())Board3D.refresh();}
+$("vN").onclick=()=>setV(0);$("vE").onclick=()=>setV(1);
+$("vS").onclick=()=>setV(2);$("vW").onclick=()=>setV(3);
+$("vTilt").onclick=()=>Board3D.toggleTilt();
+function setV(i){["vN","vE","vS","vW"].forEach((b,k)=>$(b).classList.toggle("on",k===i));Board3D.setView(i);}
+
+function render(){
+  if(!G){drawBoard();return;}
+  const setup=E.inSetup(G);
+  $("turnBadge").textContent=G.players[G.cur].name;
+  $("turnBadge").style.background=G.players[G.cur].color;
+  document.querySelectorAll(".pill[data-ph]").forEach(e=>
+    e.classList.toggle("active",setup?e.dataset.ph==="setup":e.dataset.ph===G.phase));
+  $("reinfInfo").textContent=G.phase==="reinforce"?("noch "+G.reinf):
+    (G.phase==="claim"?(E.freeTerr(G).length+" Länder frei"):
+    (G.phase==="deploy"?("noch "+G.toPlace[G.cur]):""));
+  const pl=$("players");pl.innerHTML="";
+  G.players.forEach((p,i)=>{const r=document.createElement("div");r.className="pl-row";
+    r.style.opacity=p.alive?1:.35;
+    r.innerHTML='<span class="swatch" style="background:'+p.color+'"></span>'+p.name+' · '+
+      E.terrOf(G,i).length+' Länder'+(setup?' · '+G.toPlace[i]+' Truppen':
+      (G.opts.cards?' · '+G.hands[i].length+' Karten':''))+(p.alive?"":" ☠");pl.appendChild(r);});
+  for(;logShown<G.log.length;logShown++){const e=G.log[logShown];
+    const d=document.createElement("div");d.className=e.c;let h=e.t;
+    if(e.d)h+=' <span class="dice">'+e.d.a.map(x=>'<span class="die a">'+x+'</span>').join("")+'</span>'+
+             ' <span class="dice">'+e.d.d.map(x=>'<span class="die d">'+x+'</span>').join("")+'</span>';
+    d.innerHTML=h;$("log").appendChild(d);}
+  $("log").scrollTop=$("log").scrollHeight;
+  const np=$("nextPhase"),sk=$("skipAtk"),au=$("autoBtn"),hi=$("phaseHint");
+  sk.style.display="none";au.style.display=setup?"inline-block":"none";
+  np.style.display=setup?"none":"inline-block";
+  if(G.phase==="claim")hi.innerHTML="<b>"+G.players[G.cur].name+"</b> wählt ein freies Land. Noch "+E.freeTerr(G).length+".";
+  else if(G.phase==="deploy")hi.innerHTML="<b>"+G.players[G.cur].name+"</b> setzt eine Truppe · noch "+G.toPlace[G.cur]+".";
+  else if(G.phase==="reinforce"){const b=E.mustTrade(G);np.textContent="Weiter zu Angriff";
+    np.disabled=G.reinf>0||b;hi.textContent=b?"5+ Karten – erst tauschen.":("Länder anklicken ("+G.reinf+" übrig).");}
+  else if(G.phase==="attack"){np.textContent="Weiter zu Verschieben";np.disabled=false;
+    sk.style.display="inline-block";hi.innerHTML="Eigenes Land (>1) wählen, dann <b>Gegner</b> angreifen.";}
+  else{np.textContent="Zug beenden";np.disabled=false;
+    hi.innerHTML=sel!==null?("<b>"+TERR[sel].n+"</b> kann noch <b>"+E.fortifyMaxOf(G,sel)+"</b> abgeben."):
+      "Eigenes Land wählen, dann Nachbarland.";}
+  renderHand();drawBoard();
+  if(G.pending){if(!$("conqOverlay").classList.contains("show")){
+      occupyVal=1;$("cNum").textContent=1;
+      $("conqText").textContent=TERR[G.pending.to].n+" erobert. Wähle 1–"+G.pending.max+" Truppen.";
+      $("conqOverlay").classList.add("show");}}
+  else $("conqOverlay").classList.remove("show");
+  if(G.winner!==null){$("winText").textContent="🏆 "+G.players[G.winner].name+" gewinnt!";
+    $("winOverlay").classList.add("show");}}
+function renderHand(){
+  if(!G||!G.opts.cards)return;
+  const h=G.hands[G.cur];$("handCount").textContent="("+h.length+")";
+  const box=$("hand");box.innerHTML="";
+  h.forEach((card,i)=>{const c=document.createElement("div");
+    c.className="chip "+card.sym+(selCards.includes(i)?" sel":"");
+    c.textContent=SYM[card.sym];
+    c.onclick=()=>{const k=selCards.indexOf(i);
+      if(k>=0)selCards.splice(k,1);else if(selCards.length<3)selCards.push(i);renderHand();};
+    box.appendChild(c);});
+  const ok=selCards.length===3&&E.isValidSet(selCards.map(i=>h[i]));
+  const tb=$("tradeBtn");tb.disabled=!(ok&&G.phase==="reinforce");
+  tb.textContent=tb.disabled?"Tauschen":"Tauschen (+"+E.tradeValue(G.tradeCount)+")";}
+
+/* Karte aus dem Cache laden, sonst einmalig die SVG einlesen */
+function startBoard(){
+  if(!window.THREE){$("svgStatus").textContent="3D-Bibliothek nicht geladen – beim ersten Start ist Internet nötig.";
+    $("mapLoader").classList.add("show");return;}
+  Board3D.build();render();
+}
+$("svgFile").onchange=ev=>{
+  const f=ev.target.files&&ev.target.files[0];if(!f)return;
+  $("svgStatus").textContent="Lese Karte …";
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      const n=M.importSvg(fr.result);
+      const miss=M.missing();
+      $("svgStatus").innerHTML="Erkannt: "+n+" Territorien."+(miss.length?"<br>Fehlen: "+miss.join(", "):"");
+      $("mapLoader").classList.remove("show");
+      startBoard();
+    }catch(e){$("svgStatus").textContent="Fehler: "+e.message;}
+  };
+  fr.readAsText(f);
+};
+M.load().then(ok=>{
+  if(ok){$("mapLoader").classList.remove("show");startBoard();}
+  else{$("mapLoader").classList.add("show");}
+});
+</script>
+</body>
+</html>
