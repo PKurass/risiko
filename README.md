@@ -118,19 +118,25 @@ Backen – aber nur so bleibt die Karte reproduzierbar.
 
 ## Hausregeln
 
-Alle im Startmenü einzeln abschaltbar:
+Im Startmenü einzeln abschaltbar:
 
 - **Eroberung auf max. 3 begrenzen** – nach gewonnenem Kampf rücken höchstens
-  3 Truppen nach.
-- **Ketten-Verschieben** – jedes Land darf pro Zug nur so viel abgeben, wie es
-  zu Beginn der Verschiebephase hatte. Truppen wandern über mehrere Züge nach
-  vorne, statt quer über die Karte zu springen.
+  3 Truppen ins eroberte Land nach.
 - **Spielkarten & Tausch** – Wertstaffel 4, 6, 8, 10, 12, 15, dann +5.
 - **Startaufstellung selbst wählen** – Länder reihum wählen statt zufällig.
 - **Würfelanzahl selbst wählen** – der Angreifer entscheidet über 1 bis 3
   Würfel; sein Wurf wird offengelegt, und **danach** entscheidet der
   Verteidiger über 1 oder 2. Wer 6-6-6 vor sich sieht, hält nicht mit zwei
-  Würfeln dagegen. Details in DOKUMENTATION.md Abschnitt 4.4.
+  Würfeln dagegen.
+
+Dazu die **Zwischenland-Regel**, die immer gilt und deshalb keinen Schalter
+hat: verschieben darf man beliebig oft, aber nur zwischen Nachbarn, und jedes
+Land gibt pro Zug höchstens so viel ab, wie es zu Beginn der Verschiebephase
+besaß. Frisch angekommene Truppen bleiben stehen – Nachschub marschiert über
+mehrere Züge nach vorne, statt in einem Zug quer über die Karte gereicht zu
+werden.
+
+Details zu allen Regeln in DOKUMENTATION.md Abschnitt 4.4.
 
 ## Stand und nächste Schritte
 
@@ -140,10 +146,6 @@ Spielstand wird automatisch im Browser gespeichert.
 Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 
 - **Optik** – als Nächstes dran.
-- **Der Hausregel-Schalter `chain` wirkt nicht.** `opts.chain` wird in
-  `createGame` gespeichert, aber nirgends ausgewertet; die
-  Zwischenland-Regel ist dadurch immer aktiv, egal wie der Haken im
-  Startmenü steht.
 - **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
   aber noch nicht gebaut. **Vorher zu entscheiden:** `rng` liegt im Zustand,
   den jeder Client hätte – jeder könnte den nächsten Würfelwurf vorab

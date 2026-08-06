@@ -25,7 +25,7 @@ function bau({ armies = {}, owner = {}, opts = {}, phase = "attack", cur = 0, sp
     JSON.stringify(
       E.createGame(
         namen.map((n) => ({ name: n, color: "#fff" })),
-        Object.assign({ cap3: true, chain: true, cards: true, draft: false, dice: true }, opts),
+        Object.assign({ cap3: true, cards: true, draft: false, dice: true }, opts),
         4711
       )
     )
@@ -243,6 +243,58 @@ test("Zwischenland-Regel: das Kontingent friert zu Phasenbeginn ein", () => {
   assert.match(schlecht(E.apply(s, { type: "FORTIFY", from: "china", to: "siam", count: 2 })), /1–1/);
 });
 
+test("Die Zwischenland-Regel laesst sich nicht abschalten", () => {
+  // Sie ist fest verdrahtet – ein mitgegebenes chain-Flag darf nichts bewirken,
+  // und opts fuehrt das Feld gar nicht mehr.
+  let s = bau({ armies: { china: 5, siam: 1 }, phase: "attack", opts: { chain: false } });
+  assert.equal("chain" in s.opts, false, "opts kennt kein chain mehr");
+  s = gut(E.apply(s, { type: "END_PHASE" }));
+  s = gut(E.apply(s, { type: "FORTIFY", from: "china", to: "siam", count: 4 }));
+  assert.equal(E.fortifyCapOf(s, "china"), 0, "Kontingent aufgebraucht");
+  s.armies.china = 20;                       // Nachschub aendert daran nichts
+  assert.equal(E.fortifyMaxOf(s, "china"), 0, "trotz 20 Truppen keine Abgabe mehr");
+});
+
+test("Frisch angekommene Truppen koennen nicht weitergereicht werden", () => {
+  // Der Kern der Regel: Ontario -> Alberta -> Alaska geht nicht in einem Zug.
+  let s = bau({
+    armies: { ontario: 10, alberta: 1, alaska: 1 },
+    owner: { brazil: 1 },            // B braucht ein Land, sonst kann er nicht verstaerken
+    phase: "attack",
+  });
+  s = gut(E.apply(s, { type: "END_PHASE" }));
+  assert.equal(E.fortifyCapOf(s, "alberta"), 0, "Alberta startet mit einer Truppe");
+
+  s = gut(E.apply(s, { type: "FORTIFY", from: "ontario", to: "alberta", count: 9 }));
+  assert.equal(s.armies.alberta, 10, "die Truppen sind angekommen");
+  assert.equal(E.fortifyMaxOf(s, "alberta"), 0, "koennen aber nicht weiter");
+  assert.match(
+    schlecht(E.apply(s, { type: "FORTIFY", from: "alberta", to: "alaska", count: 1 })),
+    /nichts mehr abgeben/
+  );
+
+  // Im naechsten eigenen Zug ist Alberta wieder beweglich.
+  // Einen kompletten Zug abwickeln: verstaerken, angreifen, verschieben, beenden.
+  const zugDurchspielen = (z) => {
+    while (z.reinf > 0) z = gut(E.apply(z, { type: "PLACE", terr: E.terrOf(z, z.cur)[0] }));
+    z = gut(E.apply(z, { type: "END_PHASE" }));   // -> attack
+    z = gut(E.apply(z, { type: "END_PHASE" }));   // -> fortify
+    return gut(E.apply(z, { type: "END_PHASE" })); // -> naechster Spieler, reinforce
+  };
+  let t = gut(E.apply(s, { type: "END_PHASE" }));   // A beendet, B ist dran
+  assert.equal(t.cur, 1);
+  t = zugDurchspielen(t);                          // B spielt durch, A ist dran
+  assert.equal(t.cur, 0, "A ist wieder am Zug");
+  assert.equal(t.phase, "reinforce");
+
+  while (t.reinf > 0) t = gut(E.apply(t, { type: "PLACE", terr: "ontario" }));
+  t = gut(E.apply(t, { type: "END_PHASE" }));       // -> attack
+  t = gut(E.apply(t, { type: "END_PHASE" }));       // -> fortify
+  assert.equal(E.fortifyCapOf(t, "alberta"), 9, "Albertas Kontingent ist neu berechnet");
+  t = gut(E.apply(t, { type: "FORTIFY", from: "alberta", to: "alaska", count: 9 }));
+  assert.equal(t.armies.alaska, 10, "jetzt duerfen sie weiter");
+});
+
 test("Verschieben nur zwischen eigenen Nachbarn", () => {
   let s = bau({ armies: { china: 5 }, owner: { siam: 1 }, phase: "attack" });
   s = gut(E.apply(s, { type: "END_PHASE" }));
@@ -256,7 +308,7 @@ test("Verschieben nur zwischen eigenen Nachbarn", () => {
 test("Zufaellige Aufstellung verteilt alle Laender und alle Truppen", () => {
   const s = E.createGame(
     [{ name: "A", color: "#f00" }, { name: "B", color: "#00f" }, { name: "C", color: "#0f0" }],
-    { cap3: true, chain: true, cards: true, draft: false, dice: true },
+    { cap3: true, cards: true, draft: false, dice: true },
     99
   );
   assert.equal(E.freeTerr(s).length, 0, "kein Land bleibt herrenlos");
@@ -290,7 +342,7 @@ test("Gleicher Startwert ergibt exakt denselben Spielverlauf", () => {
   const spiel = () =>
     E.createGame(
       [{ name: "A", color: "#f00" }, { name: "B", color: "#00f" }],
-      { cap3: true, chain: true, cards: true, draft: false, dice: true },
+      { cap3: true, cards: true, draft: false, dice: true },
       2024
     );
   assert.equal(JSON.stringify(spiel()), JSON.stringify(spiel()));
@@ -309,7 +361,7 @@ test("Verschiedene Startwerte ergeben verschiedene Spiele", () => {
     JSON.stringify(
       E.createGame(
         [{ name: "A", color: "#f00" }, { name: "B", color: "#00f" }],
-        { cap3: true, chain: true, cards: true, draft: false, dice: true },
+        { cap3: true, cards: true, draft: false, dice: true },
         seed
       ).owner
     );

@@ -161,7 +161,6 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
     <button class="sec" id="remPlayer">− Spieler</button><button class="sec" id="addPlayer">+ Spieler</button>
   </div>
   <label class="toggle"><input type="checkbox" id="optCap3" checked> Eroberung auf max. 3 begrenzen</label>
-  <label class="toggle"><input type="checkbox" id="optChain" checked> Ketten-Verschieben (Zwischenland-Regel)</label>
   <label class="toggle"><input type="checkbox" id="optCards" checked> Spielkarten &amp; Tausch</label>
   <label class="toggle"><input type="checkbox" id="optDraft" checked> Startaufstellung selbst wählen</label>
   <label class="toggle"><input type="checkbox" id="optDice" checked> Würfelanzahl selbst wählen (Verteidiger sieht vorher den Wurf)</label>
@@ -222,8 +221,8 @@ $("remPlayer").onclick=()=>{if(names.length>2){names.pop();renderSetup();}};
 renderSetup();showResume();
 $("startBtn").onclick=()=>{
   const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:PC[i]}));
-  G=E.createGame(pl,{cap3:$("optCap3").checked,chain:$("optChain").checked,
-    cards:$("optCards").checked,draft:$("optDraft").checked,dice:$("optDice").checked},
+  G=E.createGame(pl,{cap3:$("optCap3").checked,cards:$("optCards").checked,
+    draft:$("optDraft").checked,dice:$("optDice").checked},
     (Date.now()^(Math.random()*1e9))>>>0);
   sel=null;selCards=[];logShown=0;$("log").innerHTML="";
   $("cardPanel").style.display=G.opts.cards?"block":"none";

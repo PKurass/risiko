@@ -105,8 +105,7 @@ function buildDeck(s){const d=[];Object.keys(TERR).forEach((id,i)=>d.push({sym:S
   d.push({sym:"wild"});d.push({sym:"wild"});return shuffle(s,d);}
 function createGame(players,opts,seed){
   const s={players:players.map(p=>({name:p.name,color:p.color,alive:true})),owner:{},armies:{},
-    opts:{cap3:!!opts.cap3,chain:!!opts.chain,cards:!!opts.cards,draft:!!opts.draft,
-      dice:!!opts.dice},
+    opts:{cap3:!!opts.cap3,cards:!!opts.cards,draft:!!opts.draft,dice:!!opts.dice},
     cur:0,phase:"claim",reinf:0,toPlace:[],hands:players.map(()=>[]),deck:[],discard:[],
     tradeCount:0,conquered:false,pending:null,fortCap:{},winner:null,rng:(seed>>>0)||1,log:[]};
   Object.keys(TERR).forEach(id=>{s.owner[id]=NONE;s.armies[id]=0;});
@@ -261,6 +260,11 @@ function apply(state,a){
    case "END_PHASE":{
      if(s.phase==="reinforce")s.phase="attack";
      else if(s.phase==="attack"){s.phase="fortify";s.fortCap={};
+       /* Zwischenland-Regel, fest verdrahtet (kein Schalter): jedes Land friert
+          hier sein Abgabe-Kontingent ein und kann diesen Zug nicht mehr abgeben,
+          als es JETZT besitzt. Truppen, die waehrend der Phase ankommen, sind
+          erst im naechsten Zug wieder beweglich – sie marschieren, statt quer
+          ueber die Karte durchgereicht zu werden. Siehe DOKUMENTATION.md 4.4. */
        Object.keys(TERR).forEach(id=>{if(s.owner[id]===s.cur)s.fortCap[id]=Math.max(0,s.armies[id]-1);});}
      else{if(s.opts.cards&&s.conquered){drawCard(s,s.cur);say(s,s.players[s.cur].name+" zieht eine Karte.","l-card");}
        s.cur=(s.cur+1)%s.players.length;beginTurn(s);}

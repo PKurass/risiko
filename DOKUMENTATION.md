@@ -113,7 +113,7 @@ zurück.
   players: [{name, color, alive}],   // Reihenfolge = Zugreihenfolge
   owner:   { terrId: playerIndex | -1 },   // -1 (NONE) = herrenlos (nur in Aufstellung)
   armies:  { terrId: number },
-  opts:    { cap3, chain, cards, draft, dice },  // Hausregel-Schalter (siehe 4.4)
+  opts:    { cap3, cards, draft, dice },   // Hausregel-Schalter (siehe 4.4)
   cur:     playerIndex,              // wer ist dran
   phase:   "claim"|"deploy"|"reinforce"|"attack"|"fortify",
   reinf:   number,                   // noch zu setzende Verstärkungen
@@ -173,14 +173,25 @@ Konfigurierbar im Startmenü über `opts`:
    Umsetzung: in `apply` bei `ATTACK` wird `pending.max = min(3, armies-1)`
    gesetzt; der Spieler wählt per `OCCUPY`.
 
-2. **`chain` – Ketten-Verschieben / Zwischenland-Regel.** Beim Verschieben
+2. **Zwischenland-Regel (fest verdrahtet, kein Schalter).** Beim Verschieben
    (Phase 3) darf **jedes Land pro Zug nur so viele Truppen abgeben, wie es zu
    Beginn der Phase hatte** (minus 1, die bleibt immer). Umsetzung: beim Wechsel
    in `fortify` wird `fortCap[id] = armies[id] - 1` als Deckel eingefroren; jede
    `FORTIFY`-Aktion zieht vom Deckel ab (`fortifyCapOf`, `fortifyMaxOf`).
-   Effekt: Truppen „wandern" über mehrere Züge nach vorne, statt in einem Zug
-   quer über die Karte zu teleportieren. Der Spieler wählt pro Verschiebung die
-   Anzahl selbst (Dialog).
+
+   Wozu das gut ist: In dieser Fassung darf man beliebig oft verschieben, aber
+   nur zwischen Nachbarn. Ohne Deckel könnte man dieselben Truppen im selben Zug
+   von A nach B, dann nach C und weiter reichen – ein Land in der Mitte wäre
+   bloße Durchgangsstation („Zwischenland"), und Truppen legten in einem Zug die
+   halbe Karte zurück. Mit Deckel bleiben frisch angekommene Truppen bis zum
+   nächsten Zug stehen: **Nachschub marschiert, statt zu teleportieren.**
+
+   Beispiel: Ontario 10, Alberta 1, Alaska 1. Zu Phasenbeginn darf Ontario 9
+   abgeben, Alberta 0. Schiebt man 9 nach Alberta, hat Alberta zwar 10 Truppen,
+   sein Kontingent steht aber weiter auf 0 – nach Alaska geht diesen Zug nichts
+   mehr. Im nächsten eigenen Zug ist Alberta wieder beweglich.
+
+   Der Spieler wählt pro Verschiebung die Anzahl selbst (Dialog).
 
 3. **`cards` – Spielkarten & Tausch.** Nach einem Zug mit Eroberung zieht man
    eine Karte. 3 gleiche oder 3 verschiedene Symbole (★ = Joker) ergeben
@@ -380,12 +391,11 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 - **Die Oberfläche ist nicht automatisch geprüft.** `npm test` deckt den
   Regelkern ab; für `Board3D` und die Dialoge gibt es keinen Testlauf.
   Bisher wurde dort von Hand mit Playwright geprüft.
-- **Der Hausregel-Schalter `chain` wirkt nicht.** `opts.chain` wird in
-  `createGame` gespeichert, aber an keiner Stelle gelesen: `END_PHASE` friert
-  beim Wechsel in `fortify` den Deckel `fortCap` bedingungslos ein. Die
-  Zwischenland-Regel (Abschnitt 4.4, Punkt 2) ist dadurch **immer aktiv**,
-  unabhängig vom Haken im Startmenü. Zu entscheiden: Schalter wirksam machen
-  oder Regel fest verdrahten und den Haken entfernen.
+- **Die Zwischenland-Regel gilt immer.** Sie hatte einmal einen Haken im
+  Startmenü, der nichts bewirkte – `opts.chain` wurde gespeichert, aber nie
+  gelesen. Der Haken ist entfernt und die Regel bewusst fest verdrahtet.
+  Wer sie doch abschaltbar will, hängt eine Bedingung an die
+  `fortCap`-Initialisierung in `END_PHASE`.
 - **Kleine Teilflächen** unter `FEINHEIT.minFlaeche` werden als
   Abtast-Splitter verworfen. Bei der aktuellen `Risk.svg` gehen dadurch keine
   Inseln verloren (54 Teilflächen in beiden Feinheitsstufen); bei einer
