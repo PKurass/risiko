@@ -103,6 +103,22 @@ ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
 `Risk.svg` liegt mit im Repo. Zum Spielen wird sie nicht gebraucht, nur zum
 Backen – aber nur so bleibt die Karte reproduzierbar.
 
+## Hausregeln
+
+Alle im Startmenü einzeln abschaltbar:
+
+- **Eroberung auf max. 3 begrenzen** – nach gewonnenem Kampf rücken höchstens
+  3 Truppen nach.
+- **Ketten-Verschieben** – jedes Land darf pro Zug nur so viel abgeben, wie es
+  zu Beginn der Verschiebephase hatte. Truppen wandern über mehrere Züge nach
+  vorne, statt quer über die Karte zu springen.
+- **Spielkarten & Tausch** – Wertstaffel 4, 6, 8, 10, 12, 15, dann +5.
+- **Startaufstellung selbst wählen** – Länder reihum wählen statt zufällig.
+- **Würfelanzahl selbst wählen** – der Angreifer entscheidet über 1 bis 3
+  Würfel; sein Wurf wird offengelegt, und **danach** entscheidet der
+  Verteidiger über 1 oder 2. Wer 6-6-6 vor sich sieht, hält nicht mit zwei
+  Würfeln dagegen. Details in DOKUMENTATION.md Abschnitt 4.4.
+
 ## Stand und nächste Schritte
 
 Lokal spielbar: 3D-Karte, frei dreh-, kipp-, verschieb- und zoombar,

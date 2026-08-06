@@ -53,6 +53,12 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 .dice{display:inline-flex;gap:4px;margin-left:6px}
 .die{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
 .die.a{background:#ffd166;color:#3a2a00}.die.d{background:#7aa2ff;color:#06102b}
+.diebig{display:flex;gap:10px;justify-content:center;margin:16px 0}
+.diebig span{width:52px;height:52px;border-radius:11px;display:flex;align-items:center;
+  justify-content:center;font-size:26px;font-weight:800;background:#ffd166;color:#3a2a00}
+.pick{display:flex;gap:10px;justify-content:center;margin:14px 0}
+.pick button{flex:1;padding:14px 8px;font-size:15px;line-height:1.3}
+.pick button small{display:block;font-weight:600;font-size:11px;opacity:.75;margin-top:3px}
 .saveinfo{font-size:11px;color:#8a97b3;margin-top:8px}
 </style>
 </head>
@@ -130,6 +136,20 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
   <div class="hint" id="fRule" style="margin-top:8px"></div>
 </div></div>
 
+<div class="overlay" id="atkOverlay"><div class="modal">
+  <h3>Mit wie vielen Würfeln angreifen?</h3><p class="hint" id="atkText"></p>
+  <div class="pick" id="atkPick"></div>
+  <div class="hint">Mehr Würfel heißt mehr Chancen zu treffen – aber auch mehr eigene Verluste, wenn es schiefgeht.</div>
+  <button class="sec" id="aCancel" style="width:100%;margin-top:12px">Abbrechen</button>
+</div></div>
+
+<div class="overlay" id="defOverlay"><div class="modal">
+  <h3 id="defTitle">Abwehr</h3><p class="hint" id="defText"></p>
+  <div class="diebig" id="defDice"></div>
+  <p class="hint" id="defHint"></p>
+  <div class="pick" id="defPick"></div>
+</div></div>
+
 <div class="overlay show" id="setupOverlay"><div class="modal">
   <h3>Neues Spiel</h3>
   <div id="resumeBox" style="display:none;margin-bottom:12px">
@@ -144,6 +164,7 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
   <label class="toggle"><input type="checkbox" id="optChain" checked> Ketten-Verschieben (Zwischenland-Regel)</label>
   <label class="toggle"><input type="checkbox" id="optCards" checked> Spielkarten &amp; Tausch</label>
   <label class="toggle"><input type="checkbox" id="optDraft" checked> Startaufstellung selbst wählen</label>
+  <label class="toggle"><input type="checkbox" id="optDice" checked> Würfelanzahl selbst wählen (Verteidiger sieht vorher den Wurf)</label>
   <button id="startBtn" style="width:100%;margin-top:16px">Spiel starten</button>
 </div></div>
 
@@ -224,6 +245,10 @@ function isValidSet(cs){if(!cs||cs.length!==3||cs.some(c=>!c))return false;
   if(cs.some(c=>c.sym==="wild"))return true;
   const u=new Set(cs.map(c=>c.sym));return u.size===1||u.size===3;}
 function mustTrade(s){return s.opts.cards&&s.phase==="reinforce"&&s.hands[s.cur].length>=5;}
+/* Wuerfelgrenzen. Ohne die Hausregel wird immer die Hoechstzahl geworfen –
+   das ist genau das klassische Verhalten. */
+function attackMaxOf(s,f){return Math.max(1,Math.min(3,s.armies[f]-1));}
+function defendMaxOf(s,t){return Math.max(1,Math.min(2,s.armies[t]));}
 function fortifyCapOf(s,f){return s.fortCap[f]===undefined?Math.max(0,s.armies[f]-1):s.fortCap[f];}
 function fortifyMaxOf(s,f){return Math.max(0,Math.min(fortifyCapOf(s,f),s.armies[f]-1));}
 function inSetup(s){return s.phase==="claim"||s.phase==="deploy";}
@@ -231,7 +256,8 @@ function buildDeck(s){const d=[];Object.keys(TERR).forEach((id,i)=>d.push({sym:S
   d.push({sym:"wild"});d.push({sym:"wild"});return shuffle(s,d);}
 function createGame(players,opts,seed){
   const s={players:players.map(p=>({name:p.name,color:p.color,alive:true})),owner:{},armies:{},
-    opts:{cap3:!!opts.cap3,chain:!!opts.chain,cards:!!opts.cards,draft:!!opts.draft},
+    opts:{cap3:!!opts.cap3,chain:!!opts.chain,cards:!!opts.cards,draft:!!opts.draft,
+      dice:!!opts.dice},
     cur:0,phase:"claim",reinf:0,toPlace:[],hands:players.map(()=>[]),deck:[],discard:[],
     tradeCount:0,conquered:false,pending:null,fortCap:{},winner:null,rng:(seed>>>0)||1,log:[]};
   Object.keys(TERR).forEach(id=>{s.owner[id]=NONE;s.armies[id]=0;});
@@ -255,10 +281,33 @@ function drawCard(s,pi){if(s.deck.length===0){s.deck=shuffle(s,s.discard);s.disc
   if(s.deck.length===0)return;s.hands[pi].push(s.deck.pop());}
 function checkWin(s){const o=new Set(Object.keys(TERR).map(id=>s.owner[id]));
   if(o.size===1){s.winner=[...o][0];say(s,s.players[s.winner].name+" gewinnt!","l-conq");}}
+/* Wertet einen begonnenen Angriff aus: der Verteidiger wirft nD Wuerfel,
+   danach werden die sortierten Wuerfe paarweise verglichen. Bei Gleichstand
+   gewinnt der Verteidiger. Erwartet s.pending vom Typ "defend". */
+function resolveCombat(s,nD){
+  const p=s.pending,aD=p.aDice,dD=roll(s,nD);
+  let aL=0,dL=0;
+  for(let i=0;i<Math.min(aD.length,dD.length);i++){if(aD[i]>dD[i])dL++;else aL++;}
+  s.armies[p.from]-=aL;s.armies[p.to]-=dL;
+  s.pending=null;
+  say(s,s.players[s.cur].name+" greift "+TERR[p.to].n+" an · A −"+aL+", V −"+dL,"l-att",{a:aD,d:dD});
+  if(s.armies[p.to]<=0){const loser=s.owner[p.to];s.owner[p.to]=s.cur;s.conquered=true;
+    const mx=s.opts.cap3?Math.min(3,s.armies[p.from]-1):(s.armies[p.from]-1);
+    s.pending={type:"occupy",from:p.from,to:p.to,max:Math.max(1,mx)};
+    if(terrOf(s,loser).length===0&&s.players[loser].alive){s.players[loser].alive=false;
+      const tk=s.hands[loser].length;
+      if(tk>0){s.hands[s.cur]=s.hands[s.cur].concat(s.hands[loser]);s.hands[loser]=[];
+        say(s,s.players[s.cur].name+" übernimmt "+tk+" Karte"+(tk===1?"":"n")+".","l-card");}
+      say(s,s.players[loser].name+" ist ausgeschieden.");}}
+  return s;}
 function validate(s,a){
   if(!s)return{ok:false,error:"Kein Spiel"};
   if(s.winner!==null)return{ok:false,error:"Spiel ist beendet"};
-  if(s.pending&&a.type!=="OCCUPY")return{ok:false,error:"Erst Truppen ins eroberte Land setzen"};
+  if(s.pending){
+    if(s.pending.type==="defend"&&a.type!=="DEFEND")
+      return{ok:false,error:"Der Verteidiger muss erst seine Würfel wählen"};
+    if(s.pending.type==="occupy"&&a.type!=="OCCUPY")
+      return{ok:false,error:"Erst Truppen ins eroberte Land setzen"};}
   if(inSetup(s)&&!["CLAIM","DEPLOY","AUTO_SETUP"].includes(a.type))return{ok:false,error:"Die Aufstellung läuft noch"};
   if(!inSetup(s)&&["CLAIM","DEPLOY","AUTO_SETUP"].includes(a.type))return{ok:false,error:"Aufstellung ist abgeschlossen"};
   switch(a.type){
@@ -287,15 +336,23 @@ function validate(s,a){
     if(ix.some(i=>i<0||i>=h.length))return{ok:false,error:"Karte existiert nicht"};
     if(!isValidSet(ix.map(i=>h[i])))return{ok:false,error:"Ungültige Kombination"};
     return{ok:true};}
-   case "ATTACK":
+   case "ATTACK":{
     if(s.phase!=="attack")return{ok:false,error:"Nur in der Angriffsphase"};
     if(s.owner[a.from]!==s.cur)return{ok:false,error:"Startland gehört dir nicht"};
     if(s.owner[a.to]===s.cur)return{ok:false,error:"Eigenes Land angreifen geht nicht"};
     if(!ADJ[a.from]||!ADJ[a.from].includes(a.to))return{ok:false,error:"Länder grenzen nicht aneinander"};
     if(s.armies[a.from]<2)return{ok:false,error:"Mindestens 2 Truppen nötig"};
+    if(s.opts.dice&&a.dice!==undefined){const mx=attackMaxOf(s,a.from);
+      if(!Number.isInteger(a.dice)||a.dice<1||a.dice>mx)
+        return{ok:false,error:"Würfelzahl muss 1–"+mx+" sein"};}
+    return{ok:true};}
+   case "DEFEND":
+    if(!s.pending||s.pending.type!=="defend")return{ok:false,error:"Gerade wird nicht verteidigt"};
+    if(!Number.isInteger(a.dice)||a.dice<1||a.dice>s.pending.max)
+      return{ok:false,error:"Würfelzahl muss 1–"+s.pending.max+" sein"};
     return{ok:true};
    case "OCCUPY":
-    if(!s.pending)return{ok:false,error:"Nichts zu besetzen"};
+    if(!s.pending||s.pending.type!=="occupy")return{ok:false,error:"Nichts zu besetzen"};
     if(!Number.isInteger(a.count)||a.count<1||a.count>s.pending.max)
       return{ok:false,error:"Anzahl muss 1–"+s.pending.max+" sein"};
     return{ok:true};
@@ -333,19 +390,19 @@ function apply(state,a){
      const val=tradeValue(s.tradeCount);s.tradeCount++;s.reinf+=val;
      say(s,"Karten getauscht → +"+val+" Truppen.","l-card");break;}
    case "ATTACK":{
-     const aD=roll(s,Math.min(3,s.armies[a.from]-1)),dD=roll(s,Math.min(2,s.armies[a.to]));
-     let aL=0,dL=0;for(let i=0;i<Math.min(aD.length,dD.length);i++){if(aD[i]>dD[i])dL++;else aL++;}
-     s.armies[a.from]-=aL;s.armies[a.to]-=dL;
-     say(s,s.players[s.cur].name+" greift "+TERR[a.to].n+" an · A −"+aL+", V −"+dL,"l-att",{a:aD,d:dD});
-     if(s.armies[a.to]<=0){const loser=s.owner[a.to];s.owner[a.to]=s.cur;s.conquered=true;
-       const mx=s.opts.cap3?Math.min(3,s.armies[a.from]-1):(s.armies[a.from]-1);
-       s.pending={type:"occupy",from:a.from,to:a.to,max:Math.max(1,mx)};
-       if(terrOf(s,loser).length===0&&s.players[loser].alive){s.players[loser].alive=false;
-         const tk=s.hands[loser].length;
-         if(tk>0){s.hands[s.cur]=s.hands[s.cur].concat(s.hands[loser]);s.hands[loser]=[];
-           say(s,s.players[s.cur].name+" übernimmt "+tk+" Karte"+(tk===1?"":"n")+".","l-card");}
-         say(s,s.players[loser].name+" ist ausgeschieden.");}}
+     /* Der Angreifer wuerfelt zuerst und legt offen. Erst danach entscheidet
+        der Verteidiger, mit wie vielen Wuerfeln er kontert – deshalb ist der
+        Angriff in zwei Aktionen geteilt. Hat der Verteidiger keine Wahl
+        (nur eine Truppe, oder Hausregel aus), wird sofort ausgewertet. */
+     const nA=s.opts.dice&&a.dice!==undefined?a.dice:attackMaxOf(s,a.from);
+     const aD=roll(s,nA),maxD=defendMaxOf(s,a.to);
+     s.pending={type:"defend",from:a.from,to:a.to,aDice:aD,max:maxD};
+     if(!s.opts.dice||maxD<2)return{ok:true,state:resolveCombat(s,maxD)};
+     say(s,s.players[s.cur].name+" greift "+TERR[a.to].n+" an mit "+nA+
+       (nA===1?" Würfel":" Würfeln")+" · "+s.players[s.owner[a.to]].name+" wählt die Abwehr.",
+       "l-att",{a:aD,d:[]});
      break;}
+   case "DEFEND":return{ok:true,state:resolveCombat(s,a.dice)};
    case "OCCUPY":{const p=s.pending;s.armies[p.from]-=a.count;s.armies[p.to]=a.count;s.pending=null;
      say(s,a.count+" Truppen nach "+TERR[p.to].n+" vorgeschoben.","l-conq");checkWin(s);break;}
    case "FORTIFY":{const cap=fortifyCapOf(s,a.from);
@@ -361,7 +418,8 @@ function apply(state,a){
      break;}}
   return{ok:true,state:s};}
 return{CONTINENTS,TERR,ADJ,NONE,createGame,apply,validate,terrOf,freeTerr,incomeOf,
-  tradeValue,isValidSet,mustTrade,fortifyCapOf,fortifyMaxOf,inSetup};
+  tradeValue,isValidSet,mustTrade,fortifyCapOf,fortifyMaxOf,inSetup,
+  attackMaxOf,defendMaxOf};
 })();
 
 </script>
@@ -376,7 +434,7 @@ const SYM={inf:"I",kav:"K",art:"A",wild:"★"};
 const KEY="risiko.save.v3";
 const $=id=>document.getElementById(id);
 const cv=$("board"),lab=$("labels"),lctx=lab.getContext("2d");
-let G=null,sel=null,selCards=[],occupyVal=1,moveCtx=null,logShown=0,hover=null,mapError=null;
+let G=null,sel=null,selCards=[],occupyVal=1,moveCtx=null,atkCtx=null,logShown=0,hover=null,mapError=null;
 
 function store(k,v){try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
 function load(k){try{return localStorage.getItem(k);}catch(e){return null;}}
@@ -415,7 +473,8 @@ renderSetup();showResume();
 $("startBtn").onclick=()=>{
   const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:PC[i]}));
   G=E.createGame(pl,{cap3:$("optCap3").checked,chain:$("optChain").checked,
-    cards:$("optCards").checked,draft:$("optDraft").checked},(Date.now()^(Math.random()*1e9))>>>0);
+    cards:$("optCards").checked,draft:$("optDraft").checked,dice:$("optDice").checked},
+    (Date.now()^(Math.random()*1e9))>>>0);
   sel=null;selCards=[];logShown=0;$("log").innerHTML="";
   $("cardPanel").style.display=G.opts.cards?"block":"none";
   $("setupOverlay").classList.remove("show");render();save();};
@@ -430,7 +489,7 @@ $("bakeBtn").onclick=()=>{
   flash("risiko-daten.js gespeichert – lege sie neben die HTML-Datei.");};
 
 function clickTerr(id){
-  if(!G||G.winner!==null||G.pending||moveCtx)return;
+  if(!G||G.winner!==null||G.pending||moveCtx||atkCtx)return;
   if(G.phase==="claim"){dispatch({type:"CLAIM",terr:id});return;}
   if(G.phase==="deploy"){dispatch({type:"DEPLOY",terr:id});return;}
   if(G.phase==="reinforce"){dispatch({type:"PLACE",terr:id});return;}
@@ -438,9 +497,51 @@ function clickTerr(id){
   if(sel===null){if(mine){sel=id;render();}return;}
   if(id===sel){sel=null;render();return;}
   if(ADJ[sel].includes(id)){
-    if(G.phase==="attack"&&G.owner[id]!==G.cur){dispatch({type:"ATTACK",from:sel,to:id});return;}
+    if(G.phase==="attack"&&G.owner[id]!==G.cur){openAttack(sel,id);return;}
     if(G.phase==="fortify"&&G.owner[id]===G.cur){openMove(sel,id);return;}}
   if(mine){sel=id;render();}}
+/* Angriff: Wuerfelzahl waehlen. Gibt es nichts zu waehlen (nur ein Wuerfel
+   moeglich oder Hausregel aus), wird direkt angegriffen. */
+function openAttack(from,to){
+  const mx=E.attackMaxOf(G,from);
+  if(!G.opts.dice||mx<2){dispatch({type:"ATTACK",from,to,dice:mx});return;}
+  atkCtx={from,to,max:mx};
+  $("atkText").innerHTML="<b>"+TERR[from].n+"</b> ("+G.armies[from]+
+    ") greift <b>"+TERR[to].n+"</b> ("+G.armies[to]+") an.";
+  const box=$("atkPick");box.innerHTML="";
+  for(let n=1;n<=mx;n++){
+    const b=document.createElement("button");
+    /* Verloren gehen kann nur, was auch verglichen wird: die Paare sind durch
+       die Wuerfelzahl der Gegenseite begrenzt. */
+    const risiko=Math.min(n,E.defendMaxOf(G,to));
+    b.innerHTML=n+" Würfel<small>höchstens "+risiko+(risiko===1?" Verlust":" Verluste")+"</small>";
+    b.onclick=()=>{const c=atkCtx;atkCtx=null;$("atkOverlay").classList.remove("show");
+      dispatch({type:"ATTACK",from:c.from,to:c.to,dice:n});};
+    box.appendChild(b);}
+  $("atkOverlay").classList.add("show");}
+$("aCancel").onclick=()=>{atkCtx=null;$("atkOverlay").classList.remove("show");};
+
+/* Abwehr: der Verteidiger sieht den Wurf des Angreifers und entscheidet dann. */
+function renderDefend(){
+  const p=G.pending;
+  const vert=G.owner[p.to];
+  $("defTitle").textContent="Abwehr · "+G.players[vert].name;
+  $("defTitle").style.color=G.players[vert].color;
+  $("defText").innerHTML="<b>"+G.players[G.cur].name+"</b> greift <b>"+TERR[p.to].n+
+    "</b> mit "+p.aDice.length+(p.aDice.length===1?" Würfel":" Würfeln")+" an und würfelt:";
+  $("defDice").innerHTML=p.aDice.map(v=>"<span>"+v+"</span>").join("");
+  $("defHint").innerHTML="<b>"+TERR[p.to].n+"</b> hat "+G.armies[p.to]+
+    " Truppen. Bei Gleichstand gewinnt die Verteidigung.";
+  const box=$("defPick");box.innerHTML="";
+  for(let n=1;n<=p.max;n++){
+    const b=document.createElement("button");
+    const risiko=Math.min(n,p.aDice.length);
+    b.innerHTML="mit "+n+(n===1?" Würfel":" Würfeln")+
+      "<small>höchstens "+risiko+(risiko===1?" Verlust":" Verluste")+"</small>";
+    b.onclick=()=>{$("defOverlay").classList.remove("show");dispatch({type:"DEFEND",dice:n});};
+    box.appendChild(b);}
+  $("defOverlay").classList.add("show");}
+
 function openMove(from,to){
   const mx=E.fortifyMaxOf(G,from);
   if(mx<=0){flash(TERR[from].n+" kann diesen Zug nichts mehr abgeben.");return;}
@@ -657,7 +758,10 @@ function render(){
     hi.innerHTML=sel!==null?("<b>"+TERR[sel].n+"</b> kann noch <b>"+E.fortifyMaxOf(G,sel)+"</b> abgeben."):
       "Eigenes Land wählen, dann Nachbarland.";}
   renderHand();drawBoard();
-  if(G.pending){if(!$("conqOverlay").classList.contains("show")){
+  if(G.pending&&G.pending.type==="defend"){
+    if(!$("defOverlay").classList.contains("show"))renderDefend();}
+  else $("defOverlay").classList.remove("show");
+  if(G.pending&&G.pending.type==="occupy"){if(!$("conqOverlay").classList.contains("show")){
       occupyVal=1;$("cNum").textContent=1;
       $("conqText").textContent=TERR[G.pending.to].n+" erobert. Wähle 1–"+G.pending.max+" Truppen.";
       $("conqOverlay").classList.add("show");}}

@@ -100,7 +100,7 @@ behandeln:** `apply()` verändert nie den Eingabezustand, sondern klont ihn
   players: [{name, color, alive}],   // Reihenfolge = Zugreihenfolge
   owner:   { terrId: playerIndex | -1 },   // -1 (NONE) = herrenlos (nur in Aufstellung)
   armies:  { terrId: number },
-  opts:    { cap3, chain, cards, draft },  // Hausregel-Schalter (siehe 4.4)
+  opts:    { cap3, chain, cards, draft, dice },  // Hausregel-Schalter (siehe 4.4)
   cur:     playerIndex,              // wer ist dran
   phase:   "claim"|"deploy"|"reinforce"|"attack"|"fortify",
   reinf:   number,                   // noch zu setzende Verstärkungen
@@ -109,7 +109,8 @@ behandeln:** `apply()` verändert nie den Eingabezustand, sondern klont ihn
   deck: [], discard: [],
   tradeCount: number,                // wie oft schon Karten getauscht (Wertstaffel)
   conquered: bool,                   // hat cur diesen Zug erobert? (Karten-Zug am Zugende)
-  pending: null | {type:"occupy", from, to, max},  // offene Eroberung
+  pending: null | {type:"defend", from, to, aDice, max}   // Wurf liegt, Abwehr fehlt
+                | {type:"occupy", from, to, max},        // offene Eroberung
   fortCap: { terrId: number },       // Rest-Verschiebekontingent je Land (Hausregel)
   winner:  null | playerIndex,
   rng:     number,                   // Zustand des Zufallsgenerators (reproduzierbar!)
@@ -137,7 +138,8 @@ einzeln übers Netz muss.
 | `AUTO_SETUP` | – | Rest der Aufstellung zufällig füllen |
 | `PLACE` | `terr` | Phase 1: Verstärkung setzen |
 | `TRADE` | `cards:[i,i,i]` | Phase 1: 3 Handkarten gegen Truppen tauschen |
-| `ATTACK` | `from`, `to` | Phase 2: angreifen (würfelt intern) |
+| `ATTACK` | `from`, `to`, `dice?` | Phase 2: angreifen. Würfelt **nur** für den Angreifer |
+| `DEFEND` | `dice` | Abwehr wählen; erst hier wird der Kampf ausgewertet |
 | `OCCUPY` | `count` | nach Eroberung: 1..max Truppen nachziehen |
 | `FORTIFY` | `from`, `to`, `count?` | Phase 3: verschieben (ohne count = Maximum) |
 | `END_PHASE` | – | nächste Phase / nächster Spieler |
@@ -172,6 +174,35 @@ Konfigurierbar im Startmenü über `opts`:
 4. **`draft` – Startaufstellung selbst wählen.** Länder werden reihum gewählt
    (`CLAIM`), danach Starttruppen reihum gesetzt (`DEPLOY`). Ausgeschaltet:
    alles wird zufällig verteilt (`AUTO_SETUP`).
+
+5. **`dice` – Würfelanzahl selbst wählen.** Der Angreifer entscheidet, mit wie
+   vielen Würfeln er antritt (1 bis `attackMaxOf` = `min(3, Truppen−1)`), nicht
+   automatisch mit dem Maximum. Sein Wurf wird **offengelegt**, und erst danach
+   entscheidet der Verteidiger, mit wie vielen Würfeln er kontert
+   (1 bis `defendMaxOf` = `min(2, Truppen)`).
+
+   Der Sinn: Würfelt der Angreifer 6-6-6, wäre es teuer, mit zwei Würfeln
+   dagegenzuhalten – man verliert dann zwei Truppen statt einer. Umgekehrt
+   lohnt die volle Abwehr, wenn der Angreifer schwach würfelt. Verglichen
+   werden immer nur so viele Paare, wie die **kleinere** Würfelzahl hergibt;
+   deshalb begrenzt die Gegenseite den eigenen Höchstverlust, und genau das
+   steht auch auf den Knöpfen im Dialog.
+
+   Umsetzung: Der Angriff zerfällt in zwei Aktionen. `ATTACK` würfelt nur für
+   den Angreifer und hinterlässt `pending = {type:"defend", aDice, max}` –
+   die Truppen bleiben dabei unangetastet. `DEFEND` würfelt für die Abwehr
+   und ruft `resolveCombat`, das die Verluste verrechnet und bei Bedarf auf
+   `pending = {type:"occupy", …}` weiterschaltet. Solange eine Abwehr aussteht,
+   lässt `validate` **nur** `DEFEND` zu.
+
+   Gibt es nichts zu entscheiden – Hausregel aus, oder der Verteidiger hat nur
+   eine Truppe –, wertet `ATTACK` sofort aus und setzt gar kein `defend`-pending.
+   Der Ablauf bleibt dann exakt der klassische.
+
+   Für den späteren Online-Betrieb ändert sich nichts am Prinzip: `DEFEND` ist
+   ein Aktionspaket wie jedes andere und läuft durch dasselbe `validate`.
+   Bemerkenswert ist nur, dass hier erstmals ein **anderer** Spieler als
+   `state.cur` am Zug ist – wer entscheiden muss, steht in `owner[pending.to]`.
 
 ### 4.5 Weltdaten im Regelkern
 
