@@ -72,6 +72,21 @@ sehr feine Küstenlinien bekommt.
 Den Kopf von `risiko-daten.js` verrät jederzeit, aus welcher Quelle und in
 welcher Stufe die aktuelle Fassung gebacken wurde.
 
+## Eine Datei zum Verschicken
+
+```bash
+npm run einzeldatei
+```
+
+Packt `risiko.html` samt Karten-Modul, gebackener Karte und Three.js in eine
+einzige `risiko-komplett.html` (rund 675 kB). Die läuft per Doppelklick aus
+jedem beliebigen Ordner – ohne Repo, ohne Nachbardateien, ohne Internet.
+Praktisch zum Ausprobieren und zum Herumschicken, solange es noch keine
+Online-Fassung gibt.
+
+Zum Weiterentwickeln bleibt `risiko.html` das Original; die verpackte Fassung
+ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
+
 ## Dateien
 
 | Datei | Zweck |
@@ -81,6 +96,7 @@ welcher Stufe die aktuelle Fassung gebacken wurde.
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Nicht von Hand ändern |
 | `vendor/three.min.js` | Three.js r128, lokal eingebunden |
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
+| `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei |
 | `DOKUMENTATION.md` | Technische Dokumentation |
 | `archiv/` | Nicht eingebundene Stände, siehe [archiv/README.md](archiv/README.md) |
 

@@ -1,6 +1,10 @@
 # Abhaengigkeiten der Werkzeuge (das Spiel selbst braucht keine)
 node_modules/
 
+# Verpackte Fassung zum Verschicken – jederzeit neu baubar mit
+# npm run einzeldatei. Dupliziert nur, was ohnehin im Repo steht.
+risiko-komplett.html
+
 # Betriebssystem-Kram
 .DS_Store
 Thumbs.db
