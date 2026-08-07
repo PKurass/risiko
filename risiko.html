@@ -324,6 +324,9 @@ function isTarget(id){
    das ist zuverlässig und unabhängig von jeder Koordinatenrechnung.       */
 const Board3D=(function(){
 const S=0.09,PLATE=1.6;         // Maßstab und Plattenhöhe
+const KANTE=0x16202e;           // ruhende Grenzlinie
+const KANTE_SEL=0xffffff;       // ausgewaehltes Land
+const KANTE_ZIEL=0xffd166;      // moegliches Angriffs-/Verschiebeziel
 let scene,cam,rend,ray,mouse,meshes={},group,sea,ready=false;
 let ang=0,tilt=0.9,dist=95,tAng=0,tTilt=0.9,tDist=95,dragging=false,panning=false,rotating=false,lx=0,ly=0,didDrag=false;
 let panX=0,panZ=0;
@@ -339,20 +342,68 @@ function colorHex(id){
     if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),0.55);}
   return(col[0]<<16)|(col[1]<<8)|col[2];}
 
+/* Meer als weicher Verlauf statt einer flachen Farbe: in der Mitte hell,
+   zu den Raendern hin tief. Das gibt der Karte eine Mitte und laesst die
+   Kanten der Szene auslaufen, statt sie hart abzuschneiden. */
+function seeTextur(){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=c.height=512;
+  const x=c.getContext("2d");
+  const g=x.createRadialGradient(256,256,20,256,256,250);
+  g.addColorStop(0,"#4f95a8");g.addColorStop(0.35,"#3d7f96");
+  g.addColorStop(0.65,"#2b5a76");g.addColorStop(1,"#16324a");
+  x.fillStyle=g;x.fillRect(0,0,512,512);
+  return new THREE.CanvasTexture(c);
+}
+
 function build(){
   const THREE=window.THREE;
   scene=new THREE.Scene();
+  // Ferne Raender verlieren sich im Hintergrund – gibt Tiefe beim Herauszoomen
+  scene.fog=new THREE.Fog(0x0d1526,150,320);
   const wrap=$("stage"),w=wrap.clientWidth||900,h=wrap.clientHeight||560;
   cam=new THREE.PerspectiveCamera(42,w/h,1,1000);
   rend=new THREE.WebGLRenderer({canvas:cv,antialias:true});
   rend.setSize(w,h,false);rend.setPixelRatio(Math.min(2,devicePixelRatio||1));
   rend.setClearColor(0x0d1526,1);
-  scene.add(new THREE.HemisphereLight(0xcfe3ee,0x2a4256,0.6));
-  const sun=new THREE.DirectionalLight(0xfff4e0,0.55);sun.position.set(-40,80,30);scene.add(sun);
+  rend.shadowMap.enabled=true;
+  /* BasicShadowMap statt der weichen Varianten: die weiche Kante wird pro
+     Bildpunkt mit vielen Abtastungen erkauft. Gemessen (Software-Rendering,
+     also Worst Case) kostet PCFSoft rund die Haelfte der Bildrate gegenueber
+     Basic, bei kaum sichtbarem Unterschied. Wer weichere Schatten will:
+     hier auf THREE.PCFSoftShadowMap stellen. */
+  rend.shadowMap.type=THREE.BasicShadowMap;
+  /* Die Platten stehen fest und das Licht bewegt sich nicht – der
+     Schattenwurf ist also in jedem Bild derselbe. Einmal berechnen und
+     einfrieren: mit Neuberechnung pro Bild kostet er das Dreifache an
+     Rechenzeit, ohne dass sich irgendetwas am Bild aendert. Nur die Kamera
+     bewegt sich, und die beruehrt den Schatten nicht. */
+  rend.shadowMap.autoUpdate=false;
+  rend.shadowMap.needsUpdate=true;
+
+  scene.add(new THREE.HemisphereLight(0xd4e8f2,0x22364c,0.5));
+  /* Hauptlicht von schraeg vorn links. Es wirft die Schatten, die den
+     Platten ueberhaupt erst ihre Hoehe geben – vorher war die Karte flach
+     ausgeleuchtet und die Klippen kaum zu sehen. */
+  const sun=new THREE.DirectionalLight(0xfff3de,0.9);
+  sun.position.set(-70,120,55);sun.castShadow=true;
+  const d=75;
+  sun.shadow.camera.left=-d;sun.shadow.camera.right=d;
+  sun.shadow.camera.top=d;sun.shadow.camera.bottom=-d;
+  sun.shadow.camera.near=30;sun.shadow.camera.far=300;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.bias=-0.0007;
+  scene.add(sun);
+  // schwaches Gegenlicht, damit die Schattenseite der Klippen nicht absaeuft
+  const fill=new THREE.DirectionalLight(0x9dc4e6,0.28);
+  fill.position.set(80,45,-70);scene.add(fill);
+
   // Meer
-  const seaGeo=new THREE.PlaneGeometry(M.W*S*2.2,M.H*S*2.2);
-  const seaMat=new THREE.MeshLambertMaterial({color:0x5aa6b8});
-  sea=new THREE.Mesh(seaGeo,seaMat);sea.rotation.x=-Math.PI/2;sea.position.y=-0.4;scene.add(sea);
+  const seaGeo=new THREE.PlaneGeometry(M.W*S*2.6,M.H*S*2.6);
+  const seaMat=new THREE.MeshLambertMaterial({map:seeTextur()});
+  sea=new THREE.Mesh(seaGeo,seaMat);sea.rotation.x=-Math.PI/2;
+  sea.position.y=-0.4;sea.receiveShadow=true;scene.add(sea);
+
   group=new THREE.Group();scene.add(group);
   const polys=M.polys;
   for(const id in polys){
@@ -365,25 +416,46 @@ function build(){
       const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:false});
       geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
       const top=new THREE.MeshLambertMaterial({color:colorHex(id),side:THREE.DoubleSide});
-      const side=new THREE.MeshLambertMaterial({color:0x5b4633,side:THREE.DoubleSide});
+      const side=new THREE.MeshLambertMaterial({color:0x6b5340,side:THREE.DoubleSide});
       const mesh=new THREE.Mesh(geo,[top,side]);
+      mesh.castShadow=true;mesh.receiveShadow=true;
       mesh.userData.id=id;gmesh.add(mesh);
+
+      /* Grenzlinie knapp ueber der Oberseite. Ohne sie verschmelzen zwei
+         benachbarte Laender desselben Spielers zu einer Flaeche – man sieht
+         dann nicht mehr, wo eins aufhoert. Die Linie dient zugleich als
+         Hervorhebung fuer Auswahl und Angriffsziele (siehe recolor). */
+      const pts=loop.map(p=>{const q=mapPt(p[0],p[1]);
+        return new THREE.Vector3(q[0],PLATE+0.04,-q[1]);});
+      const kante=new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(pts),
+        new THREE.LineBasicMaterial({color:KANTE,transparent:true,opacity:0.55}));
+      kante.userData.kante=true;gmesh.add(kante);
     });
     group.add(gmesh);meshes[id]=gmesh;
   }
   ray=new THREE.Raycaster();mouse=new THREE.Vector2();
   bindInput();sizeLabels();ready=true;loop();
 }
+/* Hervorhebung ueber Leuchten und Grenzlinie statt ueber die Fuellfarbe.
+   Vorher wurde das ausgewaehlte Land einfach weiss eingefaerbt – damit war
+   die Spielerfarbe weg und man sah nicht mehr, wem es gehoert. Jetzt bleibt
+   die Farbe stehen, das Land glimmt nur und bekommt eine helle Kante. */
 function recolor(){
-  for(const id in meshes)meshes[id].children.forEach(m=>{
-    let col=colorHex(id);
-    if(sel===id)col=0xffffff;
-    else if(isTarget(id))col=0xf2f2f2;
-    else if(hover===id)col=lighten(colorHex(id));
-    m.material[0].color.setHex(col);});
+  for(const id in meshes){
+    const grund=colorHex(id);
+    const istSel=sel===id,istZiel=isTarget(id),istHover=hover===id;
+    const glut=istSel?0x35506e:istZiel?0x3a2c12:istHover?0x1d2530:0x000000;
+    const kanteFarbe=istSel?KANTE_SEL:istZiel?KANTE_ZIEL:KANTE;
+    const kanteDeck=(istSel||istZiel)?1:(istHover?0.85:0.55);
+    meshes[id].children.forEach(m=>{
+      if(m.userData.kante){
+        m.material.color.setHex(kanteFarbe);m.material.opacity=kanteDeck;return;}
+      m.material[0].color.setHex(grund);
+      m.material[0].emissive.setHex(glut);
+    });
+  }
 }
-function lighten(hex){const r=Math.min(255,((hex>>16)&255)+40),
-  g=Math.min(255,((hex>>8)&255)+40),b=Math.min(255,(hex&255)+40);return(r<<16)|(g<<8)|b;}
 
 function camPos(){
   const y=Math.sin(tilt)*dist, r=Math.cos(tilt)*dist;
@@ -393,32 +465,84 @@ function loop(){
   ang+=(tAng-ang)*0.12;tilt+=(tTilt-tilt)*0.12;dist+=(tDist-dist)*0.12;
   camPos();rend.render(scene,cam);drawLabels();requestAnimationFrame(loop);}
 
+/* Das Beschriftungs-Canvas liegt ueber dem WebGL-Bild. Es bekommt die
+   echte Geraeteaufloesung, sonst ist die Schrift auf feinen Bildschirmen
+   unscharf; gerechnet wird trotzdem in CSS-Pixeln (labW/labH). */
+let labW=0,labH=0;
 function sizeLabels(){const wrap=$("stage");
-  lab.width=wrap.clientWidth;lab.height=wrap.clientHeight;}
-function toScreen(v){const THREE=window.THREE;
+  const dpr=Math.min(2,devicePixelRatio||1);
+  labW=wrap.clientWidth;labH=wrap.clientHeight;
+  lab.width=Math.round(labW*dpr);lab.height=Math.round(labH*dpr);
+  lctx.setTransform(dpr,0,0,dpr,0,0);}
+function toScreen(v){
   const p=v.clone().project(cam);
-  return[(p.x*0.5+0.5)*lab.width,(-p.y*0.5+0.5)*lab.height,p.z];}
+  return[(p.x*0.5+0.5)*labW,(-p.y*0.5+0.5)*labH,p.z];}
+
 function drawLabels(){
-  lctx.clearRect(0,0,lab.width,lab.height);
+  lctx.setTransform(1,0,0,1,0,0);lctx.clearRect(0,0,lab.width,lab.height);
+  const dpr=Math.min(2,devicePixelRatio||1);lctx.setTransform(dpr,0,0,dpr,0,0);
   if(!G)return;
   const THREE=window.THREE;
+  // Schrift waechst und schrumpft mit dem Zoom, sonst klebt sie als
+  // gleich grosser Block ueber einer winzigen oder riesigen Karte
+  const k=Math.max(0.7,Math.min(1.5,95/dist));
   lctx.textAlign="center";lctx.textBaseline="middle";
+
+  // 1. Alle sichtbaren Laender einsammeln, Vordergrund zuerst – bei Platznot
+  //    gewinnt, was naeher an der Kamera liegt.
+  const eintraege=[];
   Object.keys(TERR).forEach(id=>{
     const c=M.center[id];if(!c)return;
     const q=mapPt(c.x,c.y);
-    // Platten liegen bei Welt-Z = -q[1] (Vorzeichen muss zur Extrusion passen)
     const s=toScreen(new THREE.Vector3(q[0],PLATE+0.4,-q[1]));
     if(s[2]>1)return;
-    const x=s[0],y=s[1],o=G.owner[id],n=G.armies[id];
-    lctx.font="600 12px system-ui,sans-serif";
-    lctx.lineWidth=3;lctx.strokeStyle="rgba(10,25,20,.7)";
-    lctx.strokeText(TERR[id].n,x,y-15);
-    lctx.fillStyle="#fff";lctx.fillText(TERR[id].n,x,y-15);
-    lctx.beginPath();lctx.arc(x,y+3,12,0,6.3);
-    lctx.fillStyle="rgba(12,18,30,.85)";lctx.fill();
-    lctx.lineWidth=3;lctx.strokeStyle=o===NONE?"#9aa7bd":G.players[o].color;lctx.stroke();
-    lctx.fillStyle="#fff";lctx.font="700 13px system-ui,sans-serif";
-    lctx.fillText(n>0?n:"–",x,y+3.5);});
+    if(s[0]<-60||s[0]>labW+60||s[1]<-40||s[1]>labH+40)return;
+    eintraege.push({id,x:s[0],y:s[1]+3*k,z:s[2]});
+  });
+  eintraege.sort((a,b)=>a.z-b.z);
+
+  const belegt=[];
+  const frei=(x,y,w,h)=>!belegt.some(r=>
+    Math.abs(x-r.x)*2<(w+r.w)&&Math.abs(y-r.y)*2<(h+r.h));
+  const merken=(x,y,w,h)=>belegt.push({x,y,w,h});
+
+  // 2. Truppenzahlen zuerst und immer – sie sind spielentscheidend und
+  //    duerfen nie einem Namen weichen.
+  const r=11*k;
+  eintraege.forEach(e=>{
+    const o=G.owner[e.id],n=G.armies[e.id];
+    lctx.beginPath();lctx.arc(e.x,e.y,r,0,6.3);
+    lctx.fillStyle="rgba(10,16,27,.88)";
+    lctx.shadowColor="rgba(0,0,0,.55)";lctx.shadowBlur=6*k;lctx.shadowOffsetY=1.5*k;
+    lctx.fill();
+    lctx.shadowColor="transparent";lctx.shadowBlur=0;lctx.shadowOffsetY=0;
+    lctx.lineWidth=2.6*k;
+    lctx.strokeStyle=o===NONE?"#9aa7bd":G.players[o].color;lctx.stroke();
+    lctx.fillStyle="#fff";lctx.font="700 "+(12*k).toFixed(1)+"px system-ui,sans-serif";
+    lctx.fillText(n>0?n:"–",e.x,e.y+0.5*k);
+    merken(e.x,e.y,r*2+3,r*2+3);
+  });
+
+  // 3. Namen in zweiter Runde: nur, wo wirklich Platz ist. Lieber ein Name
+  //    weniger als zwei uebereinander.
+  lctx.font="600 "+(11.5*k).toFixed(1)+"px system-ui,sans-serif";
+  eintraege.forEach(e=>{
+    const t=TERR[e.id].n;
+    const w=lctx.measureText(t).width+6*k,h=13*k;
+    /* Vier Ausweichplaetze rund um die Truppenzahl. Erst wenn keiner frei
+       ist, faellt der Name weg – lieber verschoben als gar nicht. */
+    const plaetze=[[0,-r-h*0.72],[0,r+h*0.72],
+                   [w*0.5+r+3*k,0],[-(w*0.5+r+3*k),0]];
+    for(const [dx,dy] of plaetze){
+      const nx=e.x+dx,ny=e.y+dy;
+      if(!frei(nx,ny,w,h))continue;
+      merken(nx,ny,w,h);
+      lctx.lineWidth=3.2*k;lctx.strokeStyle="rgba(8,14,24,.8)";
+      lctx.strokeText(t,nx,ny);
+      lctx.fillStyle="#eef4ff";lctx.fillText(t,nx,ny);
+      break;
+    }
+  });
 }
 function pick(ev){
   const r=cv.getBoundingClientRect();

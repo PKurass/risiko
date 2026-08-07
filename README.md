@@ -81,7 +81,7 @@ npm test
 Prüft den Regelkern ohne Browser: Weltdaten (beidseitige Nachbarschaften,
 Kontinent-Zuordnung), Einkommen und Boni, Kartenstaffel, den zweistufigen
 Kampf, die Hausregeln, Aufstellung, Phasenwechsel und den Determinismus.
-22 Tests, unter einer Sekunde.
+28 Tests, unter einer Sekunde.
 
 ## Eine Datei zum Verschicken
 
@@ -145,7 +145,8 @@ Spielstand wird automatisch im Browser gespeichert.
 
 Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 
-- **Optik** – als Nächstes dran.
+- **Optik** – erste Runde ist durch (Schatten, Grenzlinien, Meer-Verlauf,
+  überlappungsfreie Beschriftung). Feinschliff jederzeit möglich.
 - **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
   aber noch nicht gebaut. Der Sichtfilter `viewFor` steht bereits
   (DOKUMENTATION.md 4.6); offen ist die Serverwahl. **Wichtig dabei:**

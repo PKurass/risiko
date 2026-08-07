@@ -86,7 +86,7 @@ zurückgegebenen Zustand. Das bringt drei Vorteile:
 2. **Online-Multiplayer wird ein Anbau, kein Umbau.** Genau diese Aktions-Pakete
    verschickt man später übers Netz.
 3. **Testbarkeit.** Der Regelkern lässt sich ohne Anzeige prüfen. `npm test`
-   führt `werkzeug/regeln-testen.mjs` aus – 22 Tests, ohne Browser, ohne
+   führt `werkzeug/regeln-testen.mjs` aus – 28 Tests, ohne Browser, ohne
    Karte, ohne Three.js, in unter einer Sekunde.
 
 ---
@@ -388,12 +388,43 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 - **Koordinaten:** `mapPt(x,y) = [(x-W/2)*S, -(y-H/2)*S]`, Maßstab `S=0.09`.
   Achtung: durch die Extrusion liegt die Welt-Z bei `-mapPt.y`; Beschriftungen
   müssen dasselbe Vorzeichen benutzen (in `drawLabels` bereits berücksichtigt).
+- **Grenzlinien:** Zu jeder Platte gehört ein `LineLoop` knapp über der
+  Oberseite (`userData.kante`). Ohne ihn verschmelzen zwei benachbarte Länder
+  desselben Spielers optisch zu einer Fläche. Die Linie dient zugleich als
+  Träger der Hervorhebung.
+- **Licht und Schatten:** Hemisphärenlicht als Grundhelligkeit, ein
+  Richtungslicht von schräg vorn links wirft die Schatten, ein schwaches
+  Gegenlicht hellt die Schattenseite der Klippen auf. Erst die Schatten geben
+  den Platten sichtbare Höhe.
+
+  Zwei Entscheidungen zur Rechenzeit, beide gemessen (Software-Rendering,
+  also Worst Case, Vergleichswert ohne Schatten ≈ 22 fps):
+  `rend.shadowMap.autoUpdate = false` – Platten und Licht stehen fest, der
+  Schattenwurf ist in jedem Bild derselbe und wird einmalig berechnet.
+  Und `BasicShadowMap` statt der weichen Varianten: deren weiche Kante wird
+  pro Bildpunkt mit vielen Abtastungen erkauft und halbierte die Bildrate
+  (11 gegen 16 fps) bei kaum sichtbarem Unterschied.
+- **Meer:** eine `CanvasTexture` mit radialem Verlauf, in der Mitte heller, zu
+  den Rändern tief. Dazu `scene.fog`, damit ferne Ränder auslaufen.
 - **Beschriftung/Truppen:** Ein zweites `<canvas id="labels">` liegt über dem
-  WebGL-Canvas. Pro Frame werden die 3D-Mittelpunkte per `camera.project()` auf
-  den Bildschirm projiziert und Name + Truppenzahl-Plakette gezeichnet.
+  WebGL-Canvas; es bekommt die echte Geräteauflösung (`devicePixelRatio`),
+  gerechnet wird in CSS-Pixeln (`labW`/`labH`). Pro Frame werden die
+  3D-Mittelpunkte per `camera.project()` projiziert.
+
+  Gezeichnet wird in zwei Runden, weil die Beschriftung sonst übereinander
+  liegt: **zuerst alle Truppenzahlen** – sie sind spielentscheidend und
+  weichen nie –, **dann die Namen**, jeder nur dort, wo er nichts überdeckt.
+  Für jeden Namen werden vier Plätze rund um die Plakette probiert (oben,
+  unten, rechts, links); passt keiner, entfällt er. Sortiert wird nach
+  Bildschirmtiefe, damit bei Platznot der Vordergrund gewinnt. Die Schriftgröße
+  skaliert mit dem Zoom (`95/dist`), sonst klebt sie als gleich großer Block
+  über einer winzigen oder riesigen Karte.
 - **Einfärbung:** `colorHex(id)` – herrenlos = volle Kontinentfarbe aus der SVG,
-  im Besitz = mit Spielerfarbe gemischt; `recolor()` setzt zusätzlich Auswahl
-  (weiß), Angriffsziele (hell) und Hover (aufgehellt).
+  im Besitz = mit Spielerfarbe gemischt. `recolor()` hebt hervor, **ohne die
+  Füllfarbe zu ersetzen**: ein Glimmen (`material.emissive`) plus eine
+  eingefärbte Grenzlinie – weiß für die Auswahl, gold für mögliche Ziele.
+  Früher wurde das gewählte Land schlicht weiß übermalt, womit die
+  Spielerfarbe verschwand und man nicht mehr sah, wem es gehört.
 - **Klicken:** Raycasting (`THREE.Raycaster`) – ein Strahl von der Kamera trifft
   direkt die Platte, `mesh.userData.id`. Zuverlässiger als jede Rückrechnung.
 
