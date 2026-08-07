@@ -324,6 +324,13 @@ function isTarget(id){
    das ist zuverlässig und unabhängig von jeder Koordinatenrechnung.       */
 const Board3D=(function(){
 const S=0.09,PLATE=1.6;         // Maßstab und Plattenhöhe
+const WASSER=-0.4;              // Hoehe der Meeresoberflaeche
+/* Wie stark die Spielerfarbe die Laenderfarbe ueberdeckt. Bewusst hoch:
+   wem ein Land gehoert, soll man auf einen Blick sehen. Die SVG bringt zwar
+   die klassische Kontinent-Kodierung mit (Nordamerika gelb, Europa blau,
+   Asien gruen ...), aber der Besitz hat hier Vorrang vor der Geografie.
+   Wer es umgekehrt will, setzt den Wert herunter. */
+const BESITZ_ANTEIL=0.55;
 const KANTE=0x16202e;           // ruhende Grenzlinie
 const KANTE_SEL=0xffffff;       // ausgewaehltes Land
 const KANTE_ZIEL=0xffd166;      // moegliches Angriffs-/Verschiebeziel
@@ -339,7 +346,7 @@ function colorHex(id){
   const c=M.color[id]||[140,150,160];
   let col=[c[0],c[1],c[2]];                     // herrenlos = volle Kontinentfarbe
   if(G){const o=G.owner[id];
-    if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),0.55);}
+    if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),BESITZ_ANTEIL);}
   return(col[0]<<16)|(col[1]<<8)|col[2];}
 
 /* Meer als weicher Verlauf statt einer flachen Farbe: in der Mitte hell,
@@ -354,6 +361,159 @@ function seeTextur(){
   g.addColorStop(0.65,"#2b5a76");g.addColorStop(1,"#16324a");
   x.fillStyle=g;x.fillRect(0,0,512,512);
   return new THREE.CanvasTexture(c);
+}
+
+/* ---------- prozedurale Texturen ----------
+   Statt Bilddateien werden die Oberflaechen im Canvas gezeichnet. Das haelt
+   das Projekt bei einer Datei ohne Anhaengsel und laesst sich in einer Zeile
+   nachjustieren. Beide Texturen sind absichtlich hell und kontraktarm: sie
+   werden mit der Laenderfarbe MULTIPLIZIERT, sollen also Struktur beitragen
+   und nicht die Farbe verschieben. */
+
+/* Landoberflaeche: weiche Flecken, wie bei einer gemalten Karte. Werte um
+   1.0 herum, damit die Grundfarbe erhalten bleibt. */
+function landTextur(){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=c.height=256;
+  const x=c.getContext("2d");
+  x.fillStyle="#ffffff";x.fillRect(0,0,256,256);
+  let z=1234567;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
+  for(let i=0;i<220;i++){
+    const cx=zuf()*256,cy=zuf()*256,r=8+zuf()*38;
+    const hell=zuf()<0.5;
+    const g=x.createRadialGradient(cx,cy,0,cx,cy,r);
+    const a=0.05+zuf()*0.07;
+    g.addColorStop(0,(hell?"rgba(255,255,255,":"rgba(120,110,95,")+a+")");
+    g.addColorStop(1,"rgba(255,255,255,0)");
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,6.3);x.fill();
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(5,5);
+  return t;
+}
+
+/* Klippen: senkrechte Felsstreifen, nach unten dunkler. Die Seitenflaechen
+   der Extrusion bekommen ihre v-Koordinate aus der Plattenhoehe, u laeuft
+   an der Kueste entlang – deshalb wirken senkrechte Streifen hier richtig. */
+function klippenTextur(){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=128;c.height=128;
+  const x=c.getContext("2d");
+  x.fillStyle="#ffffff";x.fillRect(0,0,128,128);
+  let z=987654;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
+  for(let i=0;i<70;i++){
+    const bx=zuf()*128,bw=1+zuf()*7,d=0.06+zuf()*0.16;
+    x.fillStyle="rgba(60,45,32,"+d+")";x.fillRect(bx,0,bw,128);
+  }
+  for(let i=0;i<10;i++){                       // waagerechte Gesteinsbaender
+    const by=zuf()*128;
+    x.fillStyle="rgba(255,245,225,"+(0.04+zuf()*0.06)+")";
+    x.fillRect(0,by,128,1+zuf()*3);
+  }
+  const g=x.createLinearGradient(0,0,0,128);   // unten dunkler (v=0 ist unten)
+  g.addColorStop(0,"rgba(20,12,6,0.55)");
+  g.addColorStop(0.45,"rgba(20,12,6,0.12)");
+  g.addColorStop(1,"rgba(255,255,255,0)");
+  x.fillStyle=g;x.fillRect(0,0,128,128);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(7,1);
+  return t;
+}
+
+/* Schaumsaum und Flachwasser als ein einziges Band rund um jede Platte:
+   innen weisse Gischt, dann helles Flachwasser, nach aussen auslaufend.
+   flipY=false, damit Zeile 0 der Textur der Innenkante (v=0) entspricht. */
+function schaumTextur(){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=128;c.height=128;
+  const x=c.getContext("2d");
+  const g=x.createLinearGradient(0,0,0,128);
+  g.addColorStop(0.00,"rgba(255,255,255,0.92)");
+  g.addColorStop(0.09,"rgba(255,255,255,0.72)");
+  g.addColorStop(0.20,"rgba(226,252,250,0.50)");
+  g.addColorStop(0.42,"rgba(122,214,214,0.34)");
+  g.addColorStop(0.70,"rgba(96,190,200,0.15)");
+  g.addColorStop(1.00,"rgba(90,185,198,0)");
+  x.fillStyle=g;x.fillRect(0,0,128,128);
+  // unregelmaessige Gischtblasen, damit die Kante nicht wie gezogen wirkt
+  let z=24680;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
+  for(let i=0;i<160;i++){
+    const bx=zuf()*128,by=Math.pow(zuf(),2.2)*34,r=1+zuf()*4.5;
+    x.fillStyle="rgba(255,255,255,"+(0.16+zuf()*0.5)+")";
+    x.beginPath();x.arc(bx,by,r,0,6.3);x.fill();
+  }
+  const t=new THREE.CanvasTexture(c);
+  t.flipY=false;t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+/* Welche Kanten sind ueberhaupt Kueste? Ein Umriss grenzt teils ans Meer,
+   teils an Nachbarlaender – Schaum an einer Binnengrenze waere Unsinn.
+   Geprueft wird punktweise: liegt ein Stueck ausserhalb der eigenen Flaeche
+   noch in irgendeinem anderen Land, ist die Kante Binnengrenze. Die
+   Rahmen-Vorpruefung haelt das trotz 42 Laendern schnell. */
+function polygonRegister(){
+  const liste=[];
+  for(const id in M.polys) M.polys[id].forEach(r=>{
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    r.forEach(p=>{x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);
+                  x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);});
+    liste.push({id,r,x0,y0,x1,y1});
+  });
+  return liste;
+}
+function imPolygon(x,y,r){
+  let d=false;
+  for(let i=0,j=r.length-1;i<r.length;j=i++){
+    const xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))d=!d;}
+  return d;
+}
+function trifftLand(x,y,ausser,reg){
+  for(const q of reg){
+    if(q.id===ausser)continue;
+    if(x<q.x0||x>q.x1||y<q.y0||y>q.y1)continue;
+    if(imPolygon(x,y,q.r))return true;}
+  return false;
+}
+
+/* Band aus einem Umriss: innen der Umriss selbst, aussen um `breite`
+   nach draussen versetzt. Die Aussenrichtung kommt aus den beiden
+   anliegenden Kanten, damit auch Buchten und Landzungen stimmen.
+   Erzeugt werden nur die Stuecke, die tatsaechlich am Wasser liegen. */
+function schaumBand(loop,breite,id,reg){
+  const THREE=window.THREE;
+  const n=loop.length;
+  let flaeche=0;
+  for(let i=0,j=n-1;i<n;j=i++) flaeche+=loop[j][0]*loop[i][1]-loop[i][0]*loop[j][1];
+  const vz=flaeche>0?1:-1;
+  const kanteN=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+    return[vz*dy/L,-vz*dx/L];};
+
+  const pos=[],uv=[],idx=[],kueste=[];let laenge=0;
+  for(let i=0;i<n;i++){
+    const p=loop[i],vor=loop[(i+1)%n],zur=loop[(i-1+n)%n];
+    const a=kanteN(zur,p),b=kanteN(p,vor);
+    let nx=a[0]+b[0],ny=a[1]+b[1];const L=Math.hypot(nx,ny)||1;nx/=L;ny/=L;
+    // kurz nach draussen tasten – trifft das noch Land, ist hier kein Meer
+    kueste.push(!trifftLand(p[0]+nx*4,p[1]+ny*4,id,reg));
+    const qi=mapPt(p[0],p[1]),qa=mapPt(p[0]+nx*breite,p[1]+ny*breite);
+    pos.push(qi[0],WASSER+0.04,-qi[1], qa[0],WASSER+0.04,-qa[1]);
+    uv.push(laenge,0, laenge,1);
+    laenge+=Math.hypot(vor[0]-p[0],vor[1]-p[1])/26;
+  }
+  for(let i=0;i<n;i++){
+    const j=(i+1)%n;
+    if(!kueste[i]||!kueste[j])continue;          // Binnengrenze: kein Schaum
+    const a=i*2,b=i*2+1,c=j*2,d=j*2+1;
+    idx.push(a,b,d, a,d,c);
+  }
+  if(!idx.length)return null;                     // reines Binnenland
+  const g=new THREE.BufferGeometry();
+  g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx);g.computeVertexNormals();
+  return g;
 }
 
 function build(){
@@ -402,9 +562,17 @@ function build(){
   const seaGeo=new THREE.PlaneGeometry(M.W*S*2.6,M.H*S*2.6);
   const seaMat=new THREE.MeshLambertMaterial({map:seeTextur()});
   sea=new THREE.Mesh(seaGeo,seaMat);sea.rotation.x=-Math.PI/2;
-  sea.position.y=-0.4;sea.receiveShadow=true;scene.add(sea);
+  sea.position.y=WASSER;sea.receiveShadow=true;scene.add(sea);
 
   group=new THREE.Group();scene.add(group);
+  /* Der Schaum liegt bewusst NICHT in `group`: dort sucht das Raycasting
+     nach angeklickten Laendern, und ein Treffer auf dem Saum haette keine
+     Land-Id. */
+  const schaumGruppe=new THREE.Group();scene.add(schaumGruppe);
+  const matSchaum=new THREE.MeshBasicMaterial({map:schaumTextur(),transparent:true,
+    depthWrite:false,side:THREE.DoubleSide});
+  const reg=polygonRegister();
+  const texLand=landTextur(),texKlippe=klippenTextur();
   const polys=M.polys;
   for(const id in polys){
     const gmesh=new THREE.Group();gmesh.userData.id=id;
@@ -415,8 +583,8 @@ function build(){
         if(i===0)shape.moveTo(q[0],q[1]);else shape.lineTo(q[0],q[1]);});
       const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:false});
       geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
-      const top=new THREE.MeshLambertMaterial({color:colorHex(id),side:THREE.DoubleSide});
-      const side=new THREE.MeshLambertMaterial({color:0x6b5340,side:THREE.DoubleSide});
+      const top=new THREE.MeshLambertMaterial({color:colorHex(id),map:texLand,side:THREE.DoubleSide});
+      const side=new THREE.MeshLambertMaterial({color:0x8a6b4f,map:texKlippe,side:THREE.DoubleSide});
       const mesh=new THREE.Mesh(geo,[top,side]);
       mesh.castShadow=true;mesh.receiveShadow=true;
       mesh.userData.id=id;gmesh.add(mesh);
@@ -430,7 +598,13 @@ function build(){
       const kante=new THREE.LineLoop(
         new THREE.BufferGeometry().setFromPoints(pts),
         new THREE.LineBasicMaterial({color:KANTE,transparent:true,opacity:0.55}));
+      /* Linien wuerden sonst vom Raycasting getroffen und lieferten keine
+         Land-Id – Klicks nahe einer Grenze gingen dann ins Leere. */
+      kante.raycast=function(){};
       kante.userData.kante=true;gmesh.add(kante);
+
+      const band=schaumBand(loop,7,id,reg);
+      if(band)schaumGruppe.add(new THREE.Mesh(band,matSchaum));
     });
     group.add(gmesh);meshes[id]=gmesh;
   }

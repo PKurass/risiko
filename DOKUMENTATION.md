@@ -404,8 +404,30 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Und `BasicShadowMap` statt der weichen Varianten: deren weiche Kante wird
   pro Bildpunkt mit vielen Abtastungen erkauft und halbierte die Bildrate
   (11 gegen 16 fps) bei kaum sichtbarem Unterschied.
+- **Oberflächen:** Land und Klippen bekommen prozedurale `CanvasTexture`n
+  (`landTextur`, `klippenTextur`) – weiche Flecken oben, senkrechte
+  Felsstreifen an den Seiten, nach unten dunkler. Bewusst kontrastarm und um
+  Helligkeit 1 herum, denn sie werden mit der Länderfarbe **multipliziert**
+  und sollen Struktur beitragen, nicht die Farbe verschieben. Erzeugt statt
+  als Bilddatei beigelegt, damit das Projekt ohne Anhängsel auskommt.
 - **Meer:** eine `CanvasTexture` mit radialem Verlauf, in der Mitte heller, zu
   den Rändern tief. Dazu `scene.fog`, damit ferne Ränder auslaufen.
+- **Schaumsaum und Flachwasser:** ein schmales Band rund um jede Platte auf
+  Höhe der Wasseroberfläche (`schaumBand`), innen weiße Gischt, dann helles
+  Flachwasser, nach außen auslaufend – alles in einer Textur.
+
+  Entscheidend ist, dass es **nur an echten Küsten** liegt. Ein Umriss grenzt
+  teils ans Meer, teils an Nachbarländer; Schaum an einer Binnengrenze wäre
+  Unsinn. `trifftLand` tastet je Umrisspunkt ein Stück nach außen und prüft
+  gegen alle anderen Polygone (mit Rahmen-Vorprüfung, damit das trotz 42
+  Ländern schnell bleibt). Nur Segmente, deren beide Enden am Wasser liegen,
+  werden überhaupt erzeugt.
+
+  Das Band liegt in einer **eigenen Gruppe neben** `group`: dort sucht das
+  Raycasting nach angeklickten Ländern, und ein Treffer auf dem Saum hätte
+  keine Land-Id. Aus demselben Grund bekommen die Grenzlinien
+  `kante.raycast = function(){}` – sonst gingen Klicks nahe einer Grenze
+  ins Leere.
 - **Beschriftung/Truppen:** Ein zweites `<canvas id="labels">` liegt über dem
   WebGL-Canvas; es bekommt die echte Geräteauflösung (`devicePixelRatio`),
   gerechnet wird in CSS-Pixeln (`labW`/`labH`). Pro Frame werden die
