@@ -10,6 +10,11 @@
 
    Aufruf:  npm run einzeldatei
    Ergebnis: risiko-komplett.html (nicht eingecheckt, jederzeit neu baubar)
+
+   Mit --fragment entsteht zusaetzlich risiko-artefakt.html: derselbe Inhalt,
+   aber ohne <html>, <head> und <body>. Das braucht man beim Veroeffentlichen
+   als Webseite, weil der Host seinen eigenen Dokumentrahmen darum legt –
+   mit unserem eigenen Rahmen waeren es zwei ineinander.
    ===================================================================== */
 import fs from "node:fs";
 import path from "node:path";
@@ -17,6 +22,8 @@ import { fileURLToPath } from "node:url";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ZIEL = path.join(WURZEL, "risiko-komplett.html");
+const ZIEL_FRAGMENT = path.join(WURZEL, "risiko-artefakt.html");
+const alsFragment = process.argv.includes("--fragment");
 
 /* Ein "</script>" im eingebetteten Code wuerde den umgebenden Block
    vorzeitig schliessen – der Browser beendet das Element beim reinen
@@ -76,4 +83,24 @@ console.log(
     Math.round(fs.statSync(ZIEL).size / 1024) +
     " kB)"
 );
+
+if (alsFragment) {
+  const stil = html.match(/<style>[\s\S]*?<\/style>/);
+  const koerper = html.match(/<body>([\s\S]*)<\/body>/);
+  if (!stil || !koerper) {
+    throw new Error("style- oder body-Block nicht gefunden – wurde risiko.html umgebaut?");
+  }
+  const frag = stil[0] + "\n" + koerper[1].trim() + "\n";
+  /* Mit Wortgrenze pruefen: ein blosses "<head" trifft sonst auch <header>,
+     und das steht voellig zu Recht im Fragment. */
+  for (const [name, muster] of [["<!doctype", /<!doctype/i], ["<html>", /<html[\s>]/i],
+                                ["<head>", /<head[\s>]/i], ["<body>", /<body[\s>]/i]]) {
+    if (muster.test(frag)) throw new Error("Rahmen-Tag " + name + " steckt noch im Fragment.");
+  }
+  fs.writeFileSync(ZIEL_FRAGMENT, frag);
+  console.log(
+    "Geschrieben: " + path.basename(ZIEL_FRAGMENT) +
+    " (" + Math.round(fs.statSync(ZIEL_FRAGMENT).size / 1024) + " kB, zum Veroeffentlichen)"
+  );
+}
 console.log("Laeuft per Doppelklick, ohne Repo und ohne Internet.");

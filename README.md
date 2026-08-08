@@ -98,6 +98,15 @@ Online-Fassung gibt.
 Zum Weiterentwickeln bleibt `risiko.html` das Original; die verpackte Fassung
 ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
 
+```bash
+npm run artefakt
+```
+
+Baut zusätzlich `risiko-artefakt.html`: derselbe Inhalt ohne `<html>`, `<head>`
+und `<body>`. Das braucht man beim Veröffentlichen als Webseite, weil der Host
+seinen eigenen Dokumentrahmen darum legt – mit unserem eigenen wären es zwei
+ineinander. Ebenfalls nicht eingecheckt.
+
 ## Dateien
 
 | Datei | Zweck |
@@ -109,7 +118,7 @@ ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
 | `vendor/three.min.js` | Three.js r128, lokal eingebunden |
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
-| `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei |
+| `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei (`--fragment` für die Web-Fassung) |
 | `DOKUMENTATION.md` | Technische Dokumentation |
 | `archiv/` | Nicht eingebundene Stände, siehe [archiv/README.md](archiv/README.md) |
 
