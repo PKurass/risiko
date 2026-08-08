@@ -392,6 +392,18 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Oberseite (`userData.kante`). Ohne ihn verschmelzen zwei benachbarte Länder
   desselben Spielers optisch zu einer Fläche. Die Linie dient zugleich als
   Träger der Hervorhebung.
+- **Cel-Shading:** Ober- und Seitenflächen nutzen `MeshToonMaterial` mit
+  einer schmalen Verlaufstextur (`toonStufen`). `NearestFilter` verhindert
+  das Blenden zwischen den Stufen – daher die harten Lichtkanten und die
+  gemalte Anmutung statt eines weichen Verlaufs. Die Stufenwerte sind
+  bewusst gedämpft (nicht bis 255), sonst bleichen die Länderfarben aus.
+- **Gerundete Plateaukante:** `ExtrudeGeometry` mit schmaler Fase
+  (`bevelSize 0.22`). Die Fase erbt das Klippenmaterial, wodurch oben ein
+  warmer Saum entsteht. Breiter gesetzt wird daraus schnell ein Rahmen.
+- **Kontur:** zwei Lagen. Die `LineLoop` liefert die scharfe Linie, ein
+  schmales Band knapp innerhalb der Kante (`bandGeometrie` mit negativer
+  Breite) legt einen weichen dunklen Saum darüber. Eine 1px-Linie allein
+  trägt bei gemalter Anmutung zu wenig.
 - **Licht und Schatten:** Hemisphärenlicht als Grundhelligkeit, ein
   Richtungslicht von schräg vorn links wirft die Schatten, ein schwaches
   Gegenlicht hellt die Schattenseite der Klippen auf. Erst die Schatten geben
@@ -422,6 +434,12 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   gegen alle anderen Polygone (mit Rahmen-Vorprüfung, damit das trotz 42
   Ländern schnell bleibt). Nur Segmente, deren beide Enden am Wasser liegen,
   werden überhaupt erzeugt.
+
+  Schaumsaum und Kantensaum entstehen je Umriss, werden aber vor dem
+  Einhängen mit `verschmelzen` zu je einem Objekt vereinigt – aus gut hundert
+  Zeichenaufrufen werden zwei. Gemessen im Software-Rendering brachte das
+  nichts (dort begrenzt die Füllrate, nicht die Zahl der Aufrufe); auf echter
+  Grafikhardware und besonders auf Mobilgeräten zählt es.
 
   Das Band liegt in einer **eigenen Gruppe neben** `group`: dort sucht das
   Raycasting nach angeklickten Ländern, und ein Treffer auf dem Saum hätte

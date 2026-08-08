@@ -358,7 +358,7 @@ const WASSER=-0.4;              // Hoehe der Meeresoberflaeche
    Asien gruen ...), aber der Besitz hat hier Vorrang vor der Geografie.
    Wer es umgekehrt will, setzt den Wert herunter. */
 const BESITZ_ANTEIL=0.55;
-const KANTE=0x16202e;           // ruhende Grenzlinie
+const KANTE=0x0b1016;           // ruhende Grenzlinie
 const KANTE_SEL=0xffffff;       // ausgewaehltes Land
 const KANTE_ZIEL=0xffd166;      // moegliches Angriffs-/Verschiebeziel
 let scene,cam,rend,ray,mouse,meshes={},group,sea,ready=false;
@@ -510,10 +510,11 @@ function trifftLand(x,y,ausser,reg){
 }
 
 /* Band aus einem Umriss: innen der Umriss selbst, aussen um `breite`
-   nach draussen versetzt. Die Aussenrichtung kommt aus den beiden
-   anliegenden Kanten, damit auch Buchten und Landzungen stimmen.
-   Erzeugt werden nur die Stuecke, die tatsaechlich am Wasser liegen. */
-function schaumBand(loop,breite,id,reg){
+   versetzt (negative Breite versetzt nach innen). Die Versatzrichtung kommt
+   aus den beiden anliegenden Kanten, damit auch Buchten und Landzungen
+   stimmen. Zwei Verwendungen: der Schaumsaum am Wasser und der weiche
+   Kantenschatten oben auf der Platte. */
+function bandGeometrie({loop,breite,hoehe,nurKueste,id,reg}){
   const THREE=window.THREE;
   const n=loop.length;
   let flaeche=0;
@@ -522,30 +523,83 @@ function schaumBand(loop,breite,id,reg){
   const kanteN=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
     return[vz*dy/L,-vz*dx/L];};
 
-  const pos=[],uv=[],idx=[],kueste=[];let laenge=0;
+  const pos=[],uv=[],idx=[],nimm=[];let laenge=0;
   for(let i=0;i<n;i++){
     const p=loop[i],vor=loop[(i+1)%n],zur=loop[(i-1+n)%n];
     const a=kanteN(zur,p),b=kanteN(p,vor);
     let nx=a[0]+b[0],ny=a[1]+b[1];const L=Math.hypot(nx,ny)||1;nx/=L;ny/=L;
-    // kurz nach draussen tasten – trifft das noch Land, ist hier kein Meer
-    kueste.push(!trifftLand(p[0]+nx*4,p[1]+ny*4,id,reg));
+    // fuer den Schaum: kurz nach draussen tasten – trifft das noch Land, ist hier kein Meer
+    nimm.push(nurKueste?!trifftLand(p[0]+nx*4,p[1]+ny*4,id,reg):true);
     const qi=mapPt(p[0],p[1]),qa=mapPt(p[0]+nx*breite,p[1]+ny*breite);
-    pos.push(qi[0],WASSER+0.04,-qi[1], qa[0],WASSER+0.04,-qa[1]);
+    pos.push(qi[0],hoehe,-qi[1], qa[0],hoehe,-qa[1]);
     uv.push(laenge,0, laenge,1);
     laenge+=Math.hypot(vor[0]-p[0],vor[1]-p[1])/26;
   }
   for(let i=0;i<n;i++){
     const j=(i+1)%n;
-    if(!kueste[i]||!kueste[j])continue;          // Binnengrenze: kein Schaum
+    if(!nimm[i]||!nimm[j])continue;
     const a=i*2,b=i*2+1,c=j*2,d=j*2+1;
     idx.push(a,b,d, a,d,c);
   }
-  if(!idx.length)return null;                     // reines Binnenland
+  if(!idx.length)return null;
   const g=new THREE.BufferGeometry();
   g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
   g.setIndex(idx);g.computeVertexNormals();
   return g;
+}
+
+/* Weicher dunkler Saum innen an der Landkante. Gemalte Karten haben so
+   etwas fast immer – er gibt der Flaeche Rundung und traegt die Kontur,
+   die eine 1px-Linie allein nicht hergibt. */
+function kantenSchatten(){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=8;c.height=64;
+  const x=c.getContext("2d");
+  const g=x.createLinearGradient(0,0,0,64);
+  g.addColorStop(0.00,"rgba(16,21,30,0.72)");
+  g.addColorStop(0.30,"rgba(16,21,30,0.34)");
+  g.addColorStop(1.00,"rgba(18,24,34,0)");
+  x.fillStyle=g;x.fillRect(0,0,8,64);
+  const t=new THREE.CanvasTexture(c);
+  t.flipY=false;t.wrapS=THREE.RepeatWrapping;t.wrapT=THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+/* Viele kleine durchsichtige Flaechen sind teurer als eine grosse: jede ist
+   ein eigener Zeichenaufruf. Schaumsaum und Kantenschatten entstehen zwar
+   je Umriss, werden aber vor dem Einhaengen zu je einem Objekt vereinigt –
+   aus gut hundert Aufrufen werden zwei. */
+function verschmelzen(teile){
+  const THREE=window.THREE;
+  if(!teile.length)return null;
+  const pos=[],uv=[],idx=[];let versatz=0;
+  teile.forEach(g=>{
+    const p=g.attributes.position.array,u=g.attributes.uv.array,i=g.index.array;
+    for(let k=0;k<p.length;k++)pos.push(p[k]);
+    for(let k=0;k<u.length;k++)uv.push(u[k]);
+    for(let k=0;k<i.length;k++)idx.push(i[k]+versatz);
+    versatz+=p.length/3;
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx);g.computeVertexNormals();
+  return g;
+}
+
+/* Cel-Shading: statt eines weichen Lichtverlaufs nur wenige harte Stufen.
+   MeshToonMaterial liest sie aus einer schmalen Verlaufstextur ab;
+   NearestFilter verhindert das Blenden dazwischen – daher die gemalte
+   Anmutung. */
+function toonStufen(werte){
+  const THREE=window.THREE;
+  const c=document.createElement("canvas");c.width=werte.length;c.height=1;
+  const x=c.getContext("2d");
+  werte.forEach((v,i)=>{x.fillStyle="rgb("+v+","+v+","+v+")";x.fillRect(i,0,1,1);});
+  const t=new THREE.CanvasTexture(c);
+  t.minFilter=t.magFilter=THREE.NearestFilter;t.generateMipmaps=false;
+  return t;
 }
 
 function build(){
@@ -603,7 +657,12 @@ function build(){
   const schaumGruppe=new THREE.Group();scene.add(schaumGruppe);
   const matSchaum=new THREE.MeshBasicMaterial({map:schaumTextur(),transparent:true,
     depthWrite:false,side:THREE.DoubleSide});
+  const matSaum=new THREE.MeshBasicMaterial({map:kantenSchatten(),transparent:true,
+    depthWrite:false,side:THREE.DoubleSide});
+  const stufenLand=toonStufen([104,148,186,214]);
+  const stufenKlippe=toonStufen([68,124,182]);
   const reg=polygonRegister();
+  const teileSchaum=[],teileSaum=[];
   const texLand=landTextur(),texKlippe=klippenTextur();
   const polys=M.polys;
   for(const id in polys){
@@ -613,10 +672,15 @@ function build(){
       const shape=new THREE.Shape();
       loop.forEach((p,i)=>{const q=mapPt(p[0],p[1]);
         if(i===0)shape.moveTo(q[0],q[1]);else shape.lineTo(q[0],q[1]);});
-      const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:false});
+      /* Leichte Fase: die Plateaukante ist gerundet statt scharf
+         abgeschnitten. Bewusst schmal – breiter wird der Saum zum Rahmen. */
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:true,
+        bevelThickness:0.14,bevelSize:0.22,bevelSegments:2});
       geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
-      const top=new THREE.MeshLambertMaterial({color:colorHex(id),map:texLand,side:THREE.DoubleSide});
-      const side=new THREE.MeshLambertMaterial({color:0x8a6b4f,map:texKlippe,side:THREE.DoubleSide});
+      const top=new THREE.MeshToonMaterial({color:colorHex(id),map:texLand,
+        gradientMap:stufenLand,side:THREE.DoubleSide});
+      const side=new THREE.MeshToonMaterial({color:0x8a6b4f,map:texKlippe,
+        gradientMap:stufenKlippe,side:THREE.DoubleSide});
       const mesh=new THREE.Mesh(geo,[top,side]);
       mesh.castShadow=true;mesh.receiveShadow=true;
       mesh.userData.id=id;gmesh.add(mesh);
@@ -635,11 +699,17 @@ function build(){
       kante.raycast=function(){};
       kante.userData.kante=true;gmesh.add(kante);
 
-      const band=schaumBand(loop,7,id,reg);
-      if(band)schaumGruppe.add(new THREE.Mesh(band,matSchaum));
+      const band=bandGeometrie({loop,breite:7,hoehe:WASSER+0.04,nurKueste:true,id,reg});
+      if(band)teileSchaum.push(band);
+      const saum=bandGeometrie({loop,breite:-1.7,hoehe:PLATE+0.05,nurKueste:false});
+      if(saum)teileSaum.push(saum);
     });
     group.add(gmesh);meshes[id]=gmesh;
   }
+  const gSchaum=verschmelzen(teileSchaum),gSaum=verschmelzen(teileSaum);
+  if(gSchaum)schaumGruppe.add(new THREE.Mesh(gSchaum,matSchaum));
+  if(gSaum)schaumGruppe.add(new THREE.Mesh(gSaum,matSaum));
+
   ray=new THREE.Raycaster();mouse=new THREE.Vector2();
   bindInput();sizeLabels();ready=true;loop();
 }
@@ -653,7 +723,7 @@ function recolor(){
     const istSel=sel===id,istZiel=isTarget(id),istHover=hover===id;
     const glut=istSel?0x35506e:istZiel?0x3a2c12:istHover?0x1d2530:0x000000;
     const kanteFarbe=istSel?KANTE_SEL:istZiel?KANTE_ZIEL:KANTE;
-    const kanteDeck=(istSel||istZiel)?1:(istHover?0.85:0.55);
+    const kanteDeck=(istSel||istZiel)?1:(istHover?0.95:0.9);
     meshes[id].children.forEach(m=>{
       if(m.userData.kante){
         m.material.color.setHex(kanteFarbe);m.material.opacity=kanteDeck;return;}
