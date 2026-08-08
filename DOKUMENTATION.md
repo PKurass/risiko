@@ -447,6 +447,11 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   eingefärbte Grenzlinie – weiß für die Auswahl, gold für mögliche Ziele.
   Früher wurde das gewählte Land schlicht weiß übermalt, womit die
   Spielerfarbe verschwand und man nicht mehr sah, wem es gehört.
+- **Zwei Färbungen:** `faerbung` schaltet zwischen `"besitz"` (Spielerfarbe
+  wird mit `BESITZ_ANTEIL` untergemischt) und `"kontinent"` (Farben der SVG
+  unverändert). Umgeschaltet über `Board3D.setFaerbung()` und den Knopf
+  „Färbung" über dem Brett. Die Kontinent-Ansicht bringt die klassische
+  Kodierung der Vorlage zur Geltung, die in der Besitz-Ansicht überdeckt wird.
 - **Klicken:** Raycasting (`THREE.Raycaster`) – ein Strahl von der Kamera trifft
   direkt die Platte, `mesh.userData.id`. Zuverlässiger als jede Rückrechnung.
 

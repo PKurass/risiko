@@ -138,6 +138,18 @@ werden.
 
 Details zu allen Regeln in DOKUMENTATION.md Abschnitt 4.4.
 
+## Bedienung
+
+- **Kartenblatt** – jede Handkarte mit Symbol und Namen; ein Hinweis sagt, ob
+  ein Tausch möglich ist und wie viele Truppen er bringt. **Set vorschlagen**
+  wählt eine gültige Dreierkombination aus. Ab 5 Karten erscheint die
+  Tauschpflicht als Warnung, statt erst beim Weiterklicken zu erscheinen.
+- **Kontinente** – Liste mit Bonus, dem eigenen Fortschritt (`4/9`) und einem
+  Punkt in der Farbe dessen, der den Kontinent vollständig hält.
+- **Färbung umschalten** – Knopf über dem Brett:
+  *Besitzer* mischt die Spielerfarbe unter, *Kontinente* zeigt die Farben der
+  `Risk.svg` unverändert (Nordamerika gelb, Europa blau, Asien grün …).
+
 ## Stand und nächste Schritte
 
 Lokal spielbar: 3D-Karte, frei dreh-, kipp-, verschieb- und zoombar,

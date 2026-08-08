@@ -60,6 +60,23 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 .pick button{flex:1;padding:14px 8px;font-size:15px;line-height:1.3}
 .pick button small{display:block;font-weight:600;font-size:11px;opacity:.75;margin-top:3px}
 .saveinfo{font-size:11px;color:#8a97b3;margin-top:8px}
+.warn{background:#4a2030;border:1px solid #7d3350;color:#ffc2d2;border-radius:9px;
+  padding:7px 9px;font-size:12px;margin-bottom:9px;line-height:1.45}
+.karte{width:58px;padding:7px 4px 6px;border-radius:9px;background:#232d42;
+  border:2px solid transparent;cursor:pointer;text-align:center;user-select:none}
+.karte:hover{background:#2b3856}
+.karte.sel{border-color:#4da3ff;background:#2b3f60}
+.karte .zeichen{font-size:21px;font-weight:800;line-height:1.15}
+.karte .wort{font-size:9.5px;color:#8a97b3;letter-spacing:.2px;margin-top:2px}
+.karte.inf .zeichen{color:#8bd17c}.karte.kav .zeichen{color:#f0b562}
+.karte.art .zeichen{color:#e78bd1}.karte.wild .zeichen{color:#d9c2ff}
+.karte.wild{background:#332352}
+.cont-row{display:grid;grid-template-columns:1fr auto auto 14px;gap:8px;align-items:center;
+  font-size:12.5px;padding:4px 6px;border-radius:7px;margin:2px 0;color:#c3cee6}
+.cont-row.gehalten{background:#1f2c40;font-weight:600;color:#eaf1ff}
+.cont-bonus{font-weight:700;color:#ffd166;font-variant-numeric:tabular-nums}
+.cont-prog{font-size:11.5px;color:#8a97b3;font-variant-numeric:tabular-nums}
+.cont-dot{width:11px;height:11px;border-radius:50%;background:#2a3550}
 </style>
 </head>
 <body>
@@ -81,6 +98,7 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
       <button id="vS">Süd</button>
       <button id="vW">West</button>
       <span style="flex:1"></span>
+      <button id="vFarbe">Färbung: Besitzer</button>
       <button id="vTilt">Kippen</button>
     </div>
     <div id="stage">
@@ -115,9 +133,18 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
     </div>
     <div class="card" id="cardPanel">
       <h2>Deine Karten <span id="handCount"></span></h2>
+      <div id="tradeWarn" class="warn" style="display:none"></div>
       <div class="hand" id="hand"></div>
-      <button id="tradeBtn" style="width:100%" disabled>Tauschen</button>
-      <div class="hint" style="margin-top:6px">3 gleiche oder 3 verschiedene (★ = Joker), nur in Phase 1.</div>
+      <div class="btnrow">
+        <button id="suggestBtn" class="sec" style="flex:1">Set vorschlagen</button>
+        <button id="tradeBtn" style="flex:1" disabled>Tauschen</button>
+      </div>
+      <div class="hint" id="tradeHint" style="margin-top:8px"></div>
+    </div>
+    <div class="card" id="contPanel">
+      <h2>Kontinente</h2>
+      <div id="conts"></div>
+      <div class="hint" style="margin-top:8px">Wer einen Kontinent <b>vollständig</b> hält, bekommt den Bonus jede Runde zusätzlich.</div>
     </div>
     <div class="card"><h2>Verlauf</h2><div id="log"></div></div>
   </aside>
@@ -342,10 +369,15 @@ function mapPt(x,y){return[(x-CX)*S,-(y-CY)*S];}   // Karte auf XZ-Ebene
 
 function mixRGBraw(a,b,t){return[Math.round(a[0]+(b[0]-a[0])*t),
   Math.round(a[1]+(b[1]-a[1])*t),Math.round(a[2]+(b[2]-a[2])*t)];}
+/* Zwei Ansichten: "besitz" mischt die Spielerfarbe unter (wem gehoert was?),
+   "kontinent" zeigt die Farben der SVG unveraendert (wo liegt was?). Die
+   Kontinent-Ansicht bringt die klassische Kodierung der Vorlage zur Geltung
+   – Nordamerika gelb, Europa blau, Asien gruen und so weiter. */
+let faerbung="besitz";
 function colorHex(id){
   const c=M.color[id]||[140,150,160];
   let col=[c[0],c[1],c[2]];                     // herrenlos = volle Kontinentfarbe
-  if(G){const o=G.owner[id];
+  if(G&&faerbung==="besitz"){const o=G.owner[id];
     if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),BESITZ_ANTEIL);}
   return(col[0]<<16)|(col[1]<<8)|col[2];}
 
@@ -759,6 +791,8 @@ function bindInput(){
 return{
   build,recolor,ready:()=>ready,
   setView(i){tAng=i*Math.PI/2;panX=0;panZ=0;},
+  setFaerbung(m){faerbung=m;if(ready)recolor();},
+  getFaerbung(){return faerbung;},
   toggleTilt(){tTilt=tTilt>0.7?0.5:1.15;},
   refresh(){if(ready)recolor();}
 };
@@ -768,6 +802,12 @@ function drawBoard(){if(Board3D.ready())Board3D.refresh();}
 $("vN").onclick=()=>setV(0);$("vE").onclick=()=>setV(1);
 $("vS").onclick=()=>setV(2);$("vW").onclick=()=>setV(3);
 $("vTilt").onclick=()=>Board3D.toggleTilt();
+$("vFarbe").onclick=()=>{
+  const neu=Board3D.getFaerbung()==="besitz"?"kontinent":"besitz";
+  Board3D.setFaerbung(neu);
+  $("vFarbe").textContent="Färbung: "+(neu==="besitz"?"Besitzer":"Kontinente");
+  $("vFarbe").classList.toggle("on",neu==="kontinent");
+};
 function setV(i){["vN","vE","vS","vW"].forEach((b,k)=>$(b).classList.toggle("on",k===i));Board3D.setView(i);}
 
 function render(){
@@ -804,7 +844,7 @@ function render(){
   else{np.textContent="Zug beenden";np.disabled=false;
     hi.innerHTML=sel!==null?("<b>"+TERR[sel].n+"</b> kann noch <b>"+E.fortifyMaxOf(G,sel)+"</b> abgeben."):
       "Eigenes Land wählen, dann Nachbarland.";}
-  renderHand();drawBoard();
+  renderHand();renderConts();drawBoard();
   if(G.pending&&G.pending.type==="defend"){
     if(!$("defOverlay").classList.contains("show"))renderDefend();}
   else $("defOverlay").classList.remove("show");
@@ -815,19 +855,92 @@ function render(){
   else $("conqOverlay").classList.remove("show");
   if(G.winner!==null){$("winText").textContent="🏆 "+G.players[G.winner].name+" gewinnt!";
     $("winOverlay").classList.add("show");}}
+const KARTENWORT={inf:"Infanterie",kav:"Kavallerie",art:"Artillerie",wild:"Joker"};
+
+/* Sucht ein gueltiges Dreierset in der Hand und gibt die Indizes zurueck.
+   Wird fuer den Vorschlag-Knopf gebraucht und dafuer, dem Spieler
+   ueberhaupt zu sagen, ob er tauschen KANN – vorher musste man das durch
+   Probieren herausfinden. */
+function findeSet(h){
+  for(let a=0;a<h.length;a++)for(let b=a+1;b<h.length;b++)for(let c=b+1;c<h.length;c++)
+    if(E.isValidSet([h[a],h[b],h[c]]))return[a,b,c];
+  return null;
+}
+
 function renderHand(){
   if(!G||!G.opts.cards)return;
-  const h=G.hands[G.cur];$("handCount").textContent="("+h.length+")";
+  const h=G.hands[G.cur];
+  $("handCount").textContent="("+h.length+")";
+
   const box=$("hand");box.innerHTML="";
-  h.forEach((card,i)=>{const c=document.createElement("div");
-    c.className="chip "+card.sym+(selCards.includes(i)?" sel":"");
-    c.textContent=SYM[card.sym];
+  h.forEach((card,i)=>{
+    const c=document.createElement("div");
+    c.className="karte "+card.sym+(selCards.includes(i)?" sel":"");
+    c.innerHTML='<div class="zeichen">'+SYM[card.sym]+'</div>'+
+                '<div class="wort">'+KARTENWORT[card.sym]+'</div>';
     c.onclick=()=>{const k=selCards.indexOf(i);
       if(k>=0)selCards.splice(k,1);else if(selCards.length<3)selCards.push(i);renderHand();};
     box.appendChild(c);});
-  const ok=selCards.length===3&&E.isValidSet(selCards.map(i=>h[i]));
-  const tb=$("tradeBtn");tb.disabled=!(ok&&G.phase==="reinforce");
-  tb.textContent=tb.disabled?"Tauschen":"Tauschen (+"+E.tradeValue(G.tradeCount)+")";}
+  if(!h.length)box.innerHTML='<div class="hint">Noch keine Karten. Du ziehst eine, wenn du in einem Zug mindestens ein Land eroberst.</div>';
+
+  const wert=E.tradeValue(G.tradeCount);
+  const moeglich=findeSet(h);
+  const gewaehltOk=selCards.length===3&&E.isValidSet(selCards.map(i=>h[i]));
+  const inPhase=G.phase==="reinforce";
+
+  const tb=$("tradeBtn");
+  tb.disabled=!(gewaehltOk&&inPhase);
+  tb.textContent=gewaehltOk?("Tauschen · +"+wert):"Tauschen";
+  const sb=$("suggestBtn");
+  sb.disabled=!moeglich;
+  sb.style.display=(moeglich&&!gewaehltOk)?"block":"none";
+
+  // Tauschpflicht deutlich sichtbar machen, statt sie nur beim Weiter-Klick zu melden
+  const pflicht=E.mustTrade(G);
+  const w=$("tradeWarn");
+  w.style.display=pflicht?"block":"none";
+  if(pflicht)w.innerHTML="<b>Tauschpflicht.</b> Mit "+h.length+
+    " Karten musst du erst tauschen, bevor du weitergehen kannst.";
+
+  const hi=$("tradeHint");
+  if(!inPhase)
+    hi.innerHTML="Tauschen geht nur in <b>Phase 1 · Verstärken</b>.";
+  else if(gewaehltOk)
+    hi.innerHTML="Gültiges Set – bringt <b>+"+wert+" Truppen</b>.";
+  else if(moeglich)
+    hi.innerHTML="Du kannst tauschen: <b>+"+wert+" Truppen</b>. 3 gleiche oder 3 verschiedene (★ zählt als beliebig).";
+  else
+    hi.innerHTML="Kein gültiges Set. Nötig sind 3 gleiche oder 3 verschiedene (★ zählt als beliebig).<br>Nächster Tausch wäre <b>+"+wert+"</b>.";
+}
+$("suggestBtn").onclick=()=>{
+  if(!G)return;
+  const t=findeSet(G.hands[G.cur]);
+  if(t){selCards=t;renderHand();}
+};
+
+/* ---------- Kontinente: Bonus und Fortschritt ---------- */
+const KONTWORT={Nordamerika:"Nordamerika",Suedamerika:"Südamerika",Europa:"Europa",
+  Afrika:"Afrika",Asien:"Asien",Australien:"Australien"};
+function renderConts(){
+  if(!G)return;
+  const box=$("conts");box.innerHTML="";
+  Object.keys(E.CONTINENTS).forEach(k=>{
+    const ids=Object.keys(TERR).filter(id=>TERR[id].c===k);
+    const meine=ids.filter(id=>G.owner[id]===G.cur).length;
+    const erster=G.owner[ids[0]];
+    const halter=(erster!==NONE&&ids.every(id=>G.owner[id]===erster))?erster:null;
+    const r=document.createElement("div");
+    r.className="cont-row"+(halter===G.cur?" gehalten":"");
+    r.innerHTML='<span>'+KONTWORT[k]+'</span>'+
+      '<span class="cont-bonus">+'+E.CONTINENTS[k].bonus+'</span>'+
+      '<span class="cont-prog">'+meine+'/'+ids.length+'</span>'+
+      '<span class="cont-dot"'+(halter!==null?' style="background:'+G.players[halter].color+'"':'')+'></span>';
+    r.title=halter!==null
+      ? KONTWORT[k]+" wird komplett von "+G.players[halter].name+" gehalten (+"+E.CONTINENTS[k].bonus+" pro Runde)."
+      : KONTWORT[k]+": noch niemand hält alle "+ids.length+" Länder.";
+    box.appendChild(r);
+  });
+}
 
 /* Karte aus dem Cache laden, sonst einmalig die SVG einlesen */
 function startBoard(){
