@@ -72,6 +72,40 @@ sehr feine Küstenlinien bekommt.
 Den Kopf von `risiko-daten.js` verrät jederzeit, aus welcher Quelle und in
 welcher Stufe die aktuelle Fassung gebacken wurde.
 
+## Die gemalte Weltkarte
+
+Über den Platten liegt eine hauchdünne zweite Lage: die von Hand gemalte
+Weltkarte. Sie ist **kein** Ersatz für die Einfärbung, sondern liegt darüber –
+die Fugen zwischen den Ländern sind im Bild Löcher, dort scheint die
+Spielerfarbe der Platte durch. Malerei oben, Besitz unten, beides zugleich zu
+sehen.
+
+```bash
+npm run textur -- grafik/Risk_tex.png
+```
+
+Das Werkzeug schreibt drei Dinge:
+
+| Datei | Wozu |
+|---|---|
+| `textur-pruefung.png` | Das Bild mit den Umrissen aus `risiko-daten.js` in Magenta darüber. Zum Draufschauen, nicht eingecheckt. |
+| `grafik/land-textur.png` | Die verkleinerte Malerei (Voreinstellung 2048 px Kantenlänge), Transparenz erhalten. |
+| `grafik/land-textur.js` | Dasselbe Bild als data-URL. **Die** lädt das Spiel. |
+
+Warum der Umweg über eine JavaScript-Datei? Chrome verbietet einer per
+Doppelklick geöffneten Seite, eine Bilddatei aus dem Nachbarordner als Textur
+zu benutzen – ein `<script src>` darf sie dagegen laden. Denselben Trick
+benutzt schon `risiko-daten.js`, und die Einzeldatei-Fassung bekommt die
+Textur so ohne Zusatzarbeit mit.
+
+Vor dem Backen prüft das Werkzeug zwei Dinge und sagt sie an: ob Bild und
+Karte denselben Ausschnitt zeigen (Seitenverhältnis), und wie viel der
+Landfläche aus `risiko-daten.js` überhaupt bemalt ist. Liegt die Deckung unter
+etwa 92 %, sitzt die Malerei versetzt – wo, zeigt `textur-pruefung.png`.
+
+Fehlt `grafik/land-textur.js`, läuft das Spiel wie bisher, nur einfarbig. Wie
+stark die Malerei deckt, steht als `MALEREI_DECKUNG` in `risiko.html`.
+
 ## Tests
 
 ```bash
@@ -116,7 +150,9 @@ ineinander. Ebenfalls nicht eingecheckt.
 | `risiko-karte.js` | Karten-Modul `SvgMap`: liest die SVG ein, wandelt sie in Polygone |
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Nicht von Hand ändern |
 | `vendor/three.min.js` | Three.js r128, lokal eingebunden |
+| `grafik/land-textur.js` | **Erzeugt.** Die gemalte Weltkarte als data-URL. Darf fehlen |
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
+| `werkzeug/textur-backen.mjs` | Prüft und backt die Landtextur (`npm run textur`) |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei (`--fragment` für die Web-Fassung) |
 | `DOKUMENTATION.md` | Technische Dokumentation |

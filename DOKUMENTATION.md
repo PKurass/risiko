@@ -28,7 +28,10 @@ gebacken als `risiko-daten.js`.
 | `risiko-daten.js` | **Erzeugt.** Die gebackene Karte. Wird beim Start automatisch geladen und hat Vorrang vor Cache und SVG-Auswahl | ja |
 | `vendor/three.min.js` | Three.js r128, lokal statt per CDN | ja |
 | `Risk.svg` | Die Ausgangs-Weltkarte, 42 benannte Flächen (Illustrator-Export, `viewBox 0 0 1983.16 1516.84`). Nur zum Backen nötig, nicht zum Spielen | nein |
+| `grafik/land-textur.js` | **Erzeugt.** Die gemalte Weltkarte als data-URL (`window.RISIKO_TEX`). Fehlt sie, bleibt das Brett einfarbig | nein |
+| `grafik/Risk_tex.png` | Die Malerei in voller Auflösung. Nur zum Backen nötig, nicht zum Spielen | nein |
 | `werkzeug/karte-backen.mjs` | Backt `Risk.svg` → `risiko-daten.js`, headless | nein |
+| `werkzeug/textur-backen.mjs` | Prüft und backt die Malerei → `grafik/land-textur.js` | nein |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) | nein |
 | `werkzeug/regeln-laden.mjs` | Lädt `risiko-regeln.js` in Node | nein |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei | nein |
@@ -470,8 +473,24 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   unverändert). Umgeschaltet über `Board3D.setFaerbung()` und den Knopf
   „Färbung" über dem Brett. Die Kontinent-Ansicht bringt die klassische
   Kodierung der Vorlage zur Geltung, die in der Besitz-Ansicht überdeckt wird.
+- **Gemalte Weltkarte:** liegt als eigene, flache `ShapeGeometry` knapp über
+  der Platte (`MALEREI_HOEHE`), `userData.malerei`. Bewusst **nicht** als
+  Textur der Platte selbst: die Fugen zwischen den Ländern sind im Bild
+  Löcher (Transparenz, keine gemalten Linien), also muss etwas Eingefärbtes
+  darunter liegen, das dort durchscheint. Malerei oben, Besitz unten.
+  `recolor()` lässt diese Lage in Ruhe – sie zeigt die Malerei, nicht den
+  Besitz.
+  Die UV-Koordinaten kommen aus `weltUv(geo)`: jeder Punkt bekommt die Stelle,
+  an der er auf der **Gesamtkarte** liegt, gerechnet aus der Weltposition
+  zurück in Kartenkoordinaten. Ohne das bekäme jede der 54 Teilflächen das
+  ganze Bild einzeln aufgedrückt statt ihren Ausschnitt daraus.
+  Quelle ist `window.RISIKO_TEX` aus `grafik/land-textur.js` (erzeugt von
+  `werkzeug/textur-backen.mjs`). Fehlt die Datei, entfällt die Lage
+  ersatzlos – deshalb hat ihr Script-Tag ein `onerror`.
 - **Klicken:** Raycasting (`THREE.Raycaster`) – ein Strahl von der Kamera trifft
   direkt die Platte, `mesh.userData.id`. Zuverlässiger als jede Rückrechnung.
+  Grenzlinie und gemalte Lage haben deshalb ein leeres `raycast` – sonst
+  fingen sie den Strahl ab und lieferten keine Land-Id.
 
 ### 6.3 Steuerung (aktuell)
 

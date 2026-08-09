@@ -201,6 +201,8 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 <script src="risiko-regeln.js"></script>
 <script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>
 <script src="risiko-karte.js"></script>
+<!-- Die gemalte Weltkarte. Darf fehlen: dann bleibt das Brett einfarbig. -->
+<script src="grafik/land-textur.js" onerror="window.__keineTextur=1"></script>
 <script src="vendor/three.min.js"></script>
 <script>
 /* ===================== TEIL 3 — OBERFLÄCHE ===================== */
@@ -358,6 +360,13 @@ const WASSER=-0.4;              // Hoehe der Meeresoberflaeche
    Asien gruen ...), aber der Besitz hat hier Vorrang vor der Geografie.
    Wer es umgekehrt will, setzt den Wert herunter. */
 const BESITZ_ANTEIL=0.55;
+/* Die gemalte Weltkarte (grafik/land-textur.js) liegt als eigene, hauchduenne
+   Lage ueber den Platten – nicht als deren Textur. Grund: die Fugen zwischen
+   den Laendern sind im Bild Loecher, keine gemalten Linien. Als eigene Lage
+   scheint dort die eingefaerbte Platte durch; Malerei oben, Besitz unten,
+   beides gleichzeitig zu sehen. Fehlt die Datei, bleibt alles wie zuvor. */
+const MALEREI_HOEHE=0.03;       // Abstand ueber der Plattenoberseite
+const MALEREI_DECKUNG=1;        // 0 = aus, 1 = Malerei voll deckend
 const KANTE=0x0b1016;           // ruhende Grenzlinie
 const KANTE_SEL=0xffffff;       // ausgewaehltes Land
 const KANTE_ZIEL=0xffd166;      // moegliches Angriffs-/Verschiebeziel
@@ -380,6 +389,34 @@ function colorHex(id){
   if(G&&faerbung==="besitz"){const o=G.owner[id];
     if(o!==NONE)col=mixRGBraw(c,hex2rgb(G.players[o].color),BESITZ_ANTEIL);}
   return(col[0]<<16)|(col[1]<<8)|col[2];}
+
+/* Die gemalte Weltkarte kommt als data-URL aus grafik/land-textur.js. Der
+   Umweg ueber eine JavaScript-Datei ist noetig, weil Chrome einer per
+   Doppelklick geoeffneten Seite verbietet, eine Bilddatei aus dem
+   Nachbarordner als Textur zu benutzen – ein <script src> darf sie laden.
+   Fehlt die Datei, gibt es hier null und das Brett bleibt wie bisher. */
+function gemalteTextur(){
+  const THREE=window.THREE;
+  if(!window.RISIKO_TEX)return null;
+  const bild=new Image();
+  const t=new THREE.Texture(bild);
+  bild.onload=()=>{t.needsUpdate=true;};
+  bild.src=window.RISIKO_TEX;
+  if(rend)t.anisotropy=rend.capabilities.getMaxAnisotropy();
+  return t;
+}
+/* UV-Koordinaten aus der Weltlage statt aus der Einzelform: jeder Punkt
+   bekommt die Stelle, an der er auf der Gesamtkarte liegt. Nur so setzen
+   sich 54 getrennte Flaechen wieder zu einem durchgehenden Bild zusammen. */
+function weltUv(geo){
+  const THREE=window.THREE;
+  const p=geo.attributes.position,uv=new Float32Array(p.count*2);
+  for(let i=0;i<p.count;i++){
+    uv[i*2]  =(p.getX(i)/S+CX)/M.W;
+    uv[i*2+1]=1-(CY+p.getZ(i)/S)/M.H;
+  }
+  geo.setAttribute("uv",new THREE.BufferAttribute(uv,2));
+}
 
 /* Meer als weicher Verlauf statt einer flachen Farbe: in der Mitte hell,
    zu den Raendern hin tief. Das gibt der Karte eine Mitte und laesst die
@@ -663,7 +700,7 @@ function build(){
   const stufenKlippe=toonStufen([68,124,182]);
   const reg=polygonRegister();
   const teileSchaum=[],teileSaum=[];
-  const texLand=landTextur(),texKlippe=klippenTextur();
+  const texLand=landTextur(),texKlippe=klippenTextur(),texMalerei=gemalteTextur();
   const polys=M.polys;
   for(const id in polys){
     const gmesh=new THREE.Group();gmesh.userData.id=id;
@@ -699,6 +736,21 @@ function build(){
       kante.raycast=function(){};
       kante.userData.kante=true;gmesh.add(kante);
 
+      /* Die Malerei als flaches Deckblatt in derselben Umrissform. */
+      if(texMalerei){
+        const flach=new THREE.ShapeGeometry(shape);
+        flach.rotateX(-Math.PI/2);
+        flach.translate(0,PLATE+MALEREI_HOEHE,0);
+        weltUv(flach);
+        const mal=new THREE.Mesh(flach,new THREE.MeshToonMaterial({
+          map:texMalerei,gradientMap:stufenLand,transparent:true,
+          opacity:MALEREI_DECKUNG,depthWrite:false,side:THREE.DoubleSide}));
+        mal.receiveShadow=true;
+        /* Angeklickt wird die Platte darunter – sie kennt die Land-Id. */
+        mal.raycast=function(){};
+        mal.userData.malerei=true;gmesh.add(mal);
+      }
+
       const band=bandGeometrie({loop,breite:7,hoehe:WASSER+0.04,nurKueste:true,id,reg});
       if(band)teileSchaum.push(band);
       const saum=bandGeometrie({loop,breite:-1.7,hoehe:PLATE+0.05,nurKueste:false});
@@ -727,6 +779,9 @@ function recolor(){
     meshes[id].children.forEach(m=>{
       if(m.userData.kante){
         m.material.color.setHex(kanteFarbe);m.material.opacity=kanteDeck;return;}
+      /* Das gemalte Deckblatt bleibt unangetastet – es zeigt die Malerei,
+         nicht den Besitz. Der kommt von der Platte darunter. */
+      if(m.userData.malerei)return;
       m.material[0].color.setHex(grund);
       m.material[0].emissive.setHex(glut);
     });

@@ -20,3 +20,6 @@ desktop.ini
 # Hinweis: risiko-daten.js ist bewusst eingecheckt. Sie ist die fertig
 # gebackene Karte – nur deshalb startet das Spiel ohne Auswahl-Dialog.
 # Neu erzeugt wird sie mit: npm run karte
+
+# Pruefansicht der Landtextur – jederzeit neu baubar mit npm run textur
+textur-pruefung.png

@@ -9,6 +9,7 @@
     "karte": "node werkzeug/karte-backen.mjs",
     "karte:gezeichnet": "node werkzeug/karte-backen.mjs --gezeichnet",
     "karte:fein": "node werkzeug/karte-backen.mjs --fein",
+    "textur": "node werkzeug/textur-backen.mjs",
     "einzeldatei": "node werkzeug/einzeldatei-bauen.mjs",
     "artefakt": "node werkzeug/einzeldatei-bauen.mjs --fragment"
   },

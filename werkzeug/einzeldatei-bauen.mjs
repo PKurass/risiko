@@ -40,18 +40,29 @@ function lies(rel) {
 
 let html = lies("risiko.html");
 
+/* Der dritte Wert markiert eine Datei, die fehlen darf. Die gemalte
+   Weltkarte ist so ein Fall: ohne sie laeuft das Spiel, nur eben einfarbig.
+   Steht sie nicht da, faellt ihr Script-Tag ersatzlos heraus – sonst suchte
+   die verschickte Datei nach einem Nachbarn, den es nicht gibt. */
 const ersetzungen = [
   ['<script src="risiko-regeln.js"></script>', "risiko-regeln.js"],
   ['<script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>', "risiko-daten.js"],
   ['<script src="risiko-karte.js"></script>', "risiko-karte.js"],
+  ['<script src="grafik/land-textur.js" onerror="window.__keineTextur=1"></script>',
+    "grafik/land-textur.js", true],
   ['<script src="vendor/three.min.js"></script>', "vendor/three.min.js"],
 ];
 
-for (const [tag, quelle] of ersetzungen) {
+for (const [tag, quelle, darfFehlen] of ersetzungen) {
   if (!html.includes(tag)) {
     throw new Error(
       "Script-Tag nicht gefunden:\n  " + tag + "\nWurde risiko.html umgebaut? Dann hier nachziehen."
     );
+  }
+  if (darfFehlen && !fs.existsSync(path.join(WURZEL, quelle))) {
+    console.log("Nicht vorhanden, wird weggelassen: " + quelle);
+    html = html.replace(tag, "<!-- " + quelle + " nicht vorhanden -->");
+    continue;
   }
   html = html.replace(
     tag,
