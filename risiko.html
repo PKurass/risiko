@@ -365,7 +365,13 @@ const BESITZ_ANTEIL=0.55;
    den Laendern sind im Bild Loecher, keine gemalten Linien. Als eigene Lage
    scheint dort die eingefaerbte Platte durch; Malerei oben, Besitz unten,
    beides gleichzeitig zu sehen. Fehlt die Datei, bleibt alles wie zuvor. */
-const MALEREI_HOEHE=0.03;       // Abstand ueber der Plattenoberseite
+/* Achtung bei der Hoehe: die Fase kommt zur Plattenhoehe hinzu. Die
+   Oberseite liegt nicht auf PLATE, sondern auf PLATE+FASE_DICKE – wer das
+   uebersieht, legt die Malerei ins Innere der Platte, wo man sie nie zu
+   sehen bekommt. Genau das ist beim ersten Anlauf passiert. */
+const FASE_DICKE=0.14,FASE_BREITE=0.22;
+const DECKEL=PLATE+FASE_DICKE;  // wahre Hoehe der Plattenoberseite
+const MALEREI_HOEHE=0.03;       // Abstand darueber
 const MALEREI_DECKUNG=1;        // 0 = aus, 1 = Malerei voll deckend
 const KANTE=0x0b1016;           // ruhende Grenzlinie
 const KANTE_SEL=0xffffff;       // ausgewaehltes Land
@@ -395,15 +401,48 @@ function colorHex(id){
    Doppelklick geoeffneten Seite verbietet, eine Bilddatei aus dem
    Nachbarordner als Textur zu benutzen – ein <script src> darf sie laden.
    Fehlt die Datei, gibt es hier null und das Brett bleibt wie bisher. */
+let texFarbe=null,texGrau=null;
 function gemalteTextur(){
   const THREE=window.THREE;
   if(!window.RISIKO_TEX)return null;
+  if(texFarbe)return texFarbe;
   const bild=new Image();
-  const t=new THREE.Texture(bild);
-  bild.onload=()=>{t.needsUpdate=true;};
+  texFarbe=new THREE.Texture(bild);
+  const grauFlaeche=document.createElement("canvas");
+  texGrau=new THREE.CanvasTexture(grauFlaeche);
+  bild.onload=()=>{
+    texFarbe.needsUpdate=true;
+    entfaerben(grauFlaeche,bild);
+    texGrau.needsUpdate=true;
+  };
   bild.src=window.RISIKO_TEX;
-  if(rend)t.anisotropy=rend.capabilities.getMaxAnisotropy();
-  return t;
+  if(rend){const a=rend.capabilities.getMaxAnisotropy();
+    texFarbe.anisotropy=a;texGrau.anisotropy=a;}
+  return texFarbe;
+}
+/* Graufassung derselben Malerei: nur noch Pinselstrich und Licht, keine
+   Farbe. Ueber die Spielerfarbe gelegt bleibt die gemalte Anmutung, und
+   die Farbe sagt trotzdem, wem das Land gehoert.
+   Die Grauwerte werden dabei in ein schmales helles Band gehoben (160-255).
+   Grund: eine Textur kann nur abdunkeln, nie aufhellen – bei vollem Umfang
+   saeuft jede Spielerfarbe zu Dunkelgrau ab. */
+function entfaerben(c,bild){
+  c.width=bild.naturalWidth;c.height=bild.naturalHeight;
+  const g=c.getContext("2d");g.drawImage(bild,0,0);
+  const d=g.getImageData(0,0,c.width,c.height),p=d.data;
+  let lo=255,hi=0;
+  for(let i=0;i<p.length;i+=4){
+    if(p[i+3]<128)continue;
+    const l=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
+    if(l<lo)lo=l;if(l>hi)hi=l;
+  }
+  const spanne=Math.max(1,hi-lo);
+  for(let i=0;i<p.length;i+=4){
+    const l=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
+    const v=Math.max(0,Math.min(255,Math.round(160+95*((l-lo)/spanne))));
+    p[i]=p[i+1]=p[i+2]=v;
+  }
+  g.putImageData(d,0,0);
 }
 /* UV-Koordinaten aus der Weltlage statt aus der Einzelform: jeder Punkt
    bekommt die Stelle, an der er auf der Gesamtkarte liegt. Nur so setzen
@@ -712,7 +751,7 @@ function build(){
       /* Leichte Fase: die Plateaukante ist gerundet statt scharf
          abgeschnitten. Bewusst schmal – breiter wird der Saum zum Rahmen. */
       const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:true,
-        bevelThickness:0.14,bevelSize:0.22,bevelSegments:2});
+        bevelThickness:FASE_DICKE,bevelSize:FASE_BREITE,bevelSegments:2});
       geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
       const top=new THREE.MeshToonMaterial({color:colorHex(id),map:texLand,
         gradientMap:stufenLand,side:THREE.DoubleSide});
@@ -727,7 +766,7 @@ function build(){
          dann nicht mehr, wo eins aufhoert. Die Linie dient zugleich als
          Hervorhebung fuer Auswahl und Angriffsziele (siehe recolor). */
       const pts=loop.map(p=>{const q=mapPt(p[0],p[1]);
-        return new THREE.Vector3(q[0],PLATE+0.04,-q[1]);});
+        return new THREE.Vector3(q[0],DECKEL+MALEREI_HOEHE+0.03,-q[1]);});
       const kante=new THREE.LineLoop(
         new THREE.BufferGeometry().setFromPoints(pts),
         new THREE.LineBasicMaterial({color:KANTE,transparent:true,opacity:0.55}));
@@ -736,14 +775,18 @@ function build(){
       kante.raycast=function(){};
       kante.userData.kante=true;gmesh.add(kante);
 
-      /* Die Malerei als flaches Deckblatt in derselben Umrissform. */
+      /* Die Malerei als flaches Deckblatt in derselben Umrissform. Welche
+         Fassung darauf liegt – farbig oder grau eingefaerbt – entscheidet
+         recolor(); hier steht nur der Anfangszustand. */
       if(texMalerei){
         const flach=new THREE.ShapeGeometry(shape);
         flach.rotateX(-Math.PI/2);
-        flach.translate(0,PLATE+MALEREI_HOEHE,0);
+        flach.translate(0,DECKEL+MALEREI_HOEHE,0);
         weltUv(flach);
+        const kont=faerbung==="kontinent";
         const mal=new THREE.Mesh(flach,new THREE.MeshToonMaterial({
-          map:texMalerei,gradientMap:stufenLand,transparent:true,
+          map:kont?texFarbe:texGrau,color:kont?0xffffff:colorHex(id),
+          gradientMap:stufenLand,transparent:true,
           opacity:MALEREI_DECKUNG,depthWrite:false,side:THREE.DoubleSide}));
         mal.receiveShadow=true;
         /* Angeklickt wird die Platte darunter – sie kennt die Land-Id. */
@@ -753,7 +796,7 @@ function build(){
 
       const band=bandGeometrie({loop,breite:7,hoehe:WASSER+0.04,nurKueste:true,id,reg});
       if(band)teileSchaum.push(band);
-      const saum=bandGeometrie({loop,breite:-1.7,hoehe:PLATE+0.05,nurKueste:false});
+      const saum=bandGeometrie({loop,breite:-1.7,hoehe:DECKEL+MALEREI_HOEHE+0.05,nurKueste:false});
       if(saum)teileSaum.push(saum);
     });
     group.add(gmesh);meshes[id]=gmesh;
@@ -779,9 +822,16 @@ function recolor(){
     meshes[id].children.forEach(m=>{
       if(m.userData.kante){
         m.material.color.setHex(kanteFarbe);m.material.opacity=kanteDeck;return;}
-      /* Das gemalte Deckblatt bleibt unangetastet – es zeigt die Malerei,
-         nicht den Besitz. Der kommt von der Platte darunter. */
-      if(m.userData.malerei)return;
+      /* Das gemalte Deckblatt traegt den Besitz mit: in der Kontinent-
+         Ansicht liegt die Malerei in ihren eigenen Farben da, in der
+         Besitzer-Ansicht ihre Graufassung ueber der Spielerfarbe. So bleibt
+         die gemalte Anmutung, und man sieht trotzdem, wem was gehoert. */
+      if(m.userData.malerei){
+        const kont=faerbung==="kontinent";
+        const soll=kont?texFarbe:texGrau;
+        if(m.material.map!==soll){m.material.map=soll;m.material.needsUpdate=true;}
+        m.material.color.setHex(kont?0xffffff:grund);
+        return;}
       m.material[0].color.setHex(grund);
       m.material[0].emissive.setHex(glut);
     });

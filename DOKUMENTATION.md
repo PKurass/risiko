@@ -469,17 +469,28 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Früher wurde das gewählte Land schlicht weiß übermalt, womit die
   Spielerfarbe verschwand und man nicht mehr sah, wem es gehört.
 - **Zwei Färbungen:** `faerbung` schaltet zwischen `"besitz"` (Spielerfarbe
-  wird mit `BESITZ_ANTEIL` untergemischt) und `"kontinent"` (Farben der SVG
-  unverändert). Umgeschaltet über `Board3D.setFaerbung()` und den Knopf
+  wird mit `BESITZ_ANTEIL` untergemischt, darüber die entfärbte Malerei) und
+  `"kontinent"` (Farben der SVG unverändert, darüber die farbige Malerei). Umgeschaltet über `Board3D.setFaerbung()` und den Knopf
   „Färbung" über dem Brett. Die Kontinent-Ansicht bringt die klassische
   Kodierung der Vorlage zur Geltung, die in der Besitz-Ansicht überdeckt wird.
 - **Gemalte Weltkarte:** liegt als eigene, flache `ShapeGeometry` knapp über
-  der Platte (`MALEREI_HOEHE`), `userData.malerei`. Bewusst **nicht** als
-  Textur der Platte selbst: die Fugen zwischen den Ländern sind im Bild
-  Löcher (Transparenz, keine gemalten Linien), also muss etwas Eingefärbtes
-  darunter liegen, das dort durchscheint. Malerei oben, Besitz unten.
-  `recolor()` lässt diese Lage in Ruhe – sie zeigt die Malerei, nicht den
-  Besitz.
+  der Platte, `userData.malerei`. Bewusst **nicht** als Textur der Platte
+  selbst: die Fugen zwischen den Ländern sind im Bild Löcher (Transparenz,
+  keine gemalten Linien), also muss etwas Eingefärbtes darunter liegen, das
+  dort durchscheint.
+  **Falle bei der Höhe:** die Fase kommt zur Plattenhöhe hinzu – die
+  Oberseite liegt auf `DECKEL = PLATE + FASE_DICKE`, nicht auf `PLATE`. Wer
+  das übersieht, legt die Lage ins Innere der Platte und sieht sie nie
+  (genau so ist es beim ersten Anlauf passiert; die Grenzlinie täuschte
+  Funktionieren vor, weil sie am Umriss liegt, wo die Fase schon abfällt).
+  Grenzlinie und Saum liegen deshalb ebenfalls über der Malerei.
+  Zwei Fassungen derselben Malerei, umgeschaltet in `recolor()`:
+  `texFarbe` für die Kontinent-Ansicht, `texGrau` für die Besitzer-Ansicht.
+  `texGrau` entsteht beim Laden in `entfaerben()` – Luminanz in ein schmales
+  helles Band (160–255) gehoben, weil eine Textur multiplikativ wirkt und
+  nur abdunkeln kann; bei vollem Umfang säuft jede Spielerfarbe ab.
+  In der Besitzer-Ansicht trägt das Material die Farbe aus `colorHex(id)`,
+  die Malerei liefert nur noch Pinselstrich und Licht.
   Die UV-Koordinaten kommen aus `weltUv(geo)`: jeder Punkt bekommt die Stelle,
   an der er auf der **Gesamtkarte** liegt, gerechnet aus der Weltposition
   zurück in Kartenkoordinaten. Ohne das bekäme jede der 54 Teilflächen das

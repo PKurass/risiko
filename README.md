@@ -75,36 +75,54 @@ welcher Stufe die aktuelle Fassung gebacken wurde.
 ## Die gemalte Weltkarte
 
 Über den Platten liegt eine hauchdünne zweite Lage: die von Hand gemalte
-Weltkarte. Sie ist **kein** Ersatz für die Einfärbung, sondern liegt darüber –
-die Fugen zwischen den Ländern sind im Bild Löcher, dort scheint die
-Spielerfarbe der Platte durch. Malerei oben, Besitz unten, beides zugleich zu
-sehen.
+Weltkarte (`grafik/Risk_tex.png`). Sie ersetzt die Einfärbung nicht, sie
+arbeitet mit ihr zusammen — je nach Ansicht:
+
+- **Kontinente** – die Malerei in ihren eigenen Farben, unverändert.
+- **Besitzer** – dieselbe Malerei entfärbt, als Pinselstruktur über der
+  Spielerfarbe. Die gemalte Anmutung bleibt, und man sieht trotzdem sofort,
+  wem was gehört.
+
+Neu gebacken wird sie mit:
 
 ```bash
 npm run textur -- grafik/Risk_tex.png
 ```
 
-Das Werkzeug schreibt drei Dinge:
-
 | Datei | Wozu |
 |---|---|
-| `textur-pruefung.png` | Das Bild mit den Umrissen aus `risiko-daten.js` in Magenta darüber. Zum Draufschauen, nicht eingecheckt. |
-| `grafik/land-textur.png` | Die verkleinerte Malerei (Voreinstellung 2048 px Kantenlänge), Transparenz erhalten. |
-| `grafik/land-textur.js` | Dasselbe Bild als data-URL. **Die** lädt das Spiel. |
+| `textur-pruefung.png` | Die eingepasste Malerei mit den Umrissen aus `risiko-daten.js` in Magenta darüber. Zum Draufschauen, nicht eingecheckt. |
+| `grafik/land-textur.png` | Die fertige Textur als Bild (2048 px Kantenlänge). Ebenfalls nicht eingecheckt. |
+| `grafik/land-textur.js` | Dasselbe als data-URL. **Die** lädt das Spiel. |
 
-Warum der Umweg über eine JavaScript-Datei? Chrome verbietet einer per
-Doppelklick geöffneten Seite, eine Bilddatei aus dem Nachbarordner als Textur
-zu benutzen – ein `<script src>` darf sie dagegen laden. Denselben Trick
-benutzt schon `risiko-daten.js`, und die Einzeldatei-Fassung bekommt die
-Textur so ohne Zusatzarbeit mit.
+### Die Einpassung
 
-Vor dem Backen prüft das Werkzeug zwei Dinge und sagt sie an: ob Bild und
-Karte denselben Ausschnitt zeigen (Seitenverhältnis), und wie viel der
-Landfläche aus `risiko-daten.js` überhaupt bemalt ist. Liegt die Deckung unter
-etwa 92 %, sitzt die Malerei versetzt – wo, zeigt `textur-pruefung.png`.
+Photoshop-Malerei und `Risk.svg` zeigen dieselbe Welt, aber selten im exakt
+selben Ausschnitt — die erste Fassung war rund 13 % zu groß und entsprechend
+verschoben. Von Hand ist das Gefummel, deshalb rechnet das Werkzeug es aus: es
+sucht die Dehnung und Verschiebung, bei der bemalte Fläche und Spielfläche am
+besten übereinanderliegen, und backt die Textur gleich begradigt aus.
 
-Fehlt `grafik/land-textur.js`, läuft das Spiel wie bisher, nur einfarbig. Wie
-stark die Malerei deckt, steht als `MALEREI_DECKUNG` in `risiko.html`.
+```
+Einpassung: Dehnung 1.1273 / 1.1230, Versatz -6.37 % / -6.06 %
+Ueberschneidung (IoU): 57.8 %  ->  97.1 %
+Bemalte Spielflaeche:  83.5 %  ->  99.1 %
+```
+
+Gemessen wird an der **Überschneidung** (IoU), nicht an der Deckung allein –
+sonst wäre „Bild riesig ziehen, bis alles zugeklebt ist" die beste Lösung.
+Bleibt die bemalte Spielfläche danach unter etwa 88 %, haben Malerei und
+Umrisse unterschiedliche *Formen*; das lässt sich durch Dehnen und Schieben
+nicht beheben, und `textur-pruefung.png` zeigt, wo. Mit `--roh` bleibt das
+Bild unangetastet.
+
+Warum die JavaScript-Datei? Chrome verbietet einer per Doppelklick geöffneten
+Seite, eine Bilddatei aus dem Nachbarordner als Textur zu benutzen – ein
+`<script src>` darf sie dagegen laden. Denselben Trick benutzt schon
+`risiko-daten.js`, und die Einzeldatei-Fassung bekommt die Textur so ohne
+Zusatzarbeit mit.
+
+Fehlt `grafik/land-textur.js`, läuft das Spiel wie bisher, nur einfarbig.
 
 ## Tests
 
@@ -192,8 +210,9 @@ Details zu allen Regeln in DOKUMENTATION.md Abschnitt 4.4.
 - **Kontinente** – Liste mit Bonus, dem eigenen Fortschritt (`4/9`) und einem
   Punkt in der Farbe dessen, der den Kontinent vollständig hält.
 - **Färbung umschalten** – Knopf über dem Brett:
-  *Besitzer* mischt die Spielerfarbe unter, *Kontinente* zeigt die Farben der
-  `Risk.svg` unverändert (Nordamerika gelb, Europa blau, Asien grün …).
+  *Kontinente* zeigt die gemalte Weltkarte in ihren eigenen Farben
+  (Nordamerika gelb, Europa blau, Asien grün …), *Besitzer* legt dieselbe
+  Malerei entfärbt über die Spielerfarbe.
 
 ## Stand und nächste Schritte
 

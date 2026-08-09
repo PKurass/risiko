@@ -23,3 +23,7 @@ desktop.ini
 
 # Pruefansicht der Landtextur – jederzeit neu baubar mit npm run textur
 textur-pruefung.png
+
+# Zwischenstufe der Landtextur zum Ansehen. Eingecheckt ist nur die
+# JS-Fassung grafik/land-textur.js, die das Spiel wirklich laedt.
+grafik/land-textur.png
