@@ -532,6 +532,38 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Grenzlinie und gemalte Lage haben deshalb ein leeres `raycast` – sonst
   fingen sie den Strahl ab und lieferten keine Land-Id.
 
+### 6.2b Würfel und Kampffenster
+
+- **Augen statt Ziffern:** `AUGEN` legt für jeden Wert fest, welche Felder
+  eines 3×3-Rasters belegt sind; `wuerfelEl()` baut daraus ein Element,
+  `miniWuerfel()` dieselbe Sache als Zeichenkette für den Verlauf (der wird am
+  Stück als HTML gebaut). Die Größe hängt an der CSS-Variablen `--k`, deshalb
+  taugt derselbe Baustein von 19 px im Verlauf bis 58 px im Kampffenster.
+- **Wurf:** `rollen(el, endwert, dauer, fertig)` wechselt die Augen im Takt und
+  lässt die CSS-Animation taumeln, dann bleibt der Würfel auf dem Endwert
+  stehen. Der Endwert kommt aus dem Regelkern – gewürfelt wird dort, hier wird
+  nur gezeigt.
+- **`zeigeDuell(d, ctx)`** stellt beide Seiten gegenüber und löst Paar für Paar
+  auf: verglichen wird der Reihe nach, höchster gegen höchsten, genau wie in
+  `resolveCombat`. Der Verlierer bekommt `.verloren`, der Gewinner `.gewonnen`.
+  Würfel ohne Gegenüber (drei gegen zwei) bleiben liegen und werden als
+  „ohne Gegenwurf" ausgewiesen.
+- **Zwei Fallen**, beide beim Bauen aufgetreten:
+  1. Der Regelkern schreibt **schon beim Angriff** einen Log-Eintrag mit den
+     Würfeln des Angreifers und leerer Gegenseite – das ist die Vorlage für die
+     Abwehrwahl, noch kein Kampf. `dispatch` darf also nur auslösen, wenn
+     `e.d.d` gefüllt ist, sonst erscheint ein Duell ganz ohne Gegner.
+  2. Die Bilanz muss **vorab** gerechnet werden, nicht während der Einblendung
+     aufaddiert: läuft die letzte Zeile ohne Gegenwurf, käme sie sonst nie
+     zustande.
+- **Laufnummer `duellNr`:** greift ein neuer Kampf, während der alte noch
+  einblendet, würde dessen Schließ-Auftrag mitten hineinfahren. Jede verspätete
+  Einblendung prüft deshalb ihre Nummer, und `zeigeDuell` löscht den alten
+  Auftrag.
+- Das Fenster **schließt von selbst** (`ende+2000 ms`). Bei zwanzig Angriffen
+  pro Zug wäre ein Pflichtklick eine Zumutung; wer schneller ist, klickt
+  trotzdem – auf den Knopf oder irgendwohin ins Fenster.
+
 ### 6.3 Steuerung (aktuell)
 
 - **Linke Maustaste ziehen** = drehen; **einfacher Linksklick** = Land wählen.

@@ -203,6 +203,11 @@ Details zu allen Regeln in DOKUMENTATION.md Abschnitt 4.4.
 
 ## Bedienung
 
+- **Würfel und Kampf** – echte Würfel mit Augen, die sichtbar rollen. Nach dem
+  Wurf zeigt ein Kampffenster Paar für Paar, welcher Würfel welchen schlägt:
+  der Verlierer fällt zurück, der Gewinner tritt hervor, daneben steht, wer die
+  Truppe verliert. Unten die Bilanz. Das Fenster geht von selbst zu – wer
+  schneller ist, klickt.
 - **Kartenblatt** – jede Handkarte mit Symbol und Namen; ein Hinweis sagt, ob
   ein Tausch möglich ist und wie viele Truppen er bringt. **Set vorschlagen**
   wählt eine gültige Dreierkombination aus. Ab 5 Karten erscheint die

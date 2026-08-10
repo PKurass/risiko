@@ -50,12 +50,37 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .setup-grid label{font-size:13px;color:#8a97b3}
 input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #35456b;background:#0f1420;color:#e8eefc}
 .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:#c3cee6;margin-top:8px}
-.dice{display:inline-flex;gap:4px;margin-left:6px}
-.die{width:20px;height:20px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
-.die.a{background:#ffd166;color:#3a2a00}.die.d{background:#7aa2ff;color:#06102b}
+.dice{display:inline-flex;gap:4px;margin-left:6px;vertical-align:-5px}
+/* Wuerfel mit Augen statt Ziffern. Die Augen sitzen in einem 3x3-Raster;
+   welche Felder belegt sind, entscheidet AUGEN weiter unten im Skript.
+   Groesse und Augenmass haengen an --k, damit derselbe Baustein vom
+   Verlaufseintrag (18px) bis zum Duellfenster (60px) taugt. */
+.wf{--k:52px;width:var(--k);height:var(--k);border-radius:calc(var(--k)*.22);
+  display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);
+  padding:calc(var(--k)*.13);gap:calc(var(--k)*.04);flex:none;
+  box-shadow:inset 0 calc(var(--k)*-.06) 0 rgba(0,0,0,.16),0 3px 7px rgba(0,0,0,.4)}
+.wf i{width:calc(var(--k)*.19);height:calc(var(--k)*.19);border-radius:50%;
+  background:currentColor;align-self:center;justify-self:center}
+.wf.a{background:linear-gradient(155deg,#ffe7a0,#eeb02c);color:#3a2600}
+.wf.d{background:linear-gradient(155deg,#bcd2ff,#5c82e6);color:#07142c}
+@keyframes wuerfeln{0%{transform:rotate(0) scale(1)}
+  25%{transform:rotate(-15deg) scale(1.09)}50%{transform:rotate(13deg) scale(.94)}
+  75%{transform:rotate(-9deg) scale(1.06)}100%{transform:rotate(0) scale(1)}}
+@keyframes landen{0%{transform:scale(1.22)}60%{transform:scale(.94)}100%{transform:scale(1)}}
+.wf.rollt{animation:wuerfeln .38s ease-in-out infinite}
+.wf.landet{animation:landen .26s ease-out}
+/* Ausgang eines Paares: der Verlierer faellt zurueck, der Sieger tritt vor. */
+.wf.verloren{opacity:.38;filter:grayscale(.6);transform:scale(.9) rotate(-7deg)}
+.wf.gewonnen{box-shadow:0 0 0 3px rgba(255,255,255,.85),0 4px 12px rgba(0,0,0,.5)}
+.wf.verloren,.wf.gewonnen{transition:all .22s ease-out}
+.duellzeile{display:flex;align-items:center;justify-content:center;gap:14px;margin:12px 0;
+  opacity:.28;transition:opacity .2s}
+.duellzeile.da{opacity:1}
+.duellzeile .satz{font-size:12px;font-weight:700;min-width:104px;text-align:left;color:#8a97b3}
+.duellzeile.da .satz.av{color:#ff8fa8}.duellzeile.da .satz.dv{color:#8bd17c}
+.duellkopf{display:flex;justify-content:space-between;font-size:12px;font-weight:700;
+  color:#8a97b3;margin-bottom:2px;padding:0 4px}
 .diebig{display:flex;gap:10px;justify-content:center;margin:16px 0}
-.diebig span{width:52px;height:52px;border-radius:11px;display:flex;align-items:center;
-  justify-content:center;font-size:26px;font-weight:800;background:#ffd166;color:#3a2a00}
 .pick{display:flex;gap:10px;justify-content:center;margin:14px 0}
 .pick button{flex:1;padding:14px 8px;font-size:15px;line-height:1.3}
 .pick button small{display:block;font-weight:600;font-size:11px;opacity:.75;margin-top:3px}
@@ -177,6 +202,14 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
   <div class="pick" id="defPick"></div>
 </div></div>
 
+<div class="overlay" id="duelOverlay" style="z-index:30"><div class="modal" style="max-width:400px">
+  <h3 id="duelTitle">Kampf</h3>
+  <div class="duellkopf"><span id="duelAng">Angriff</span><span id="duelVert">Abwehr</span></div>
+  <div id="duelPaare"></div>
+  <p class="hint" id="duelText" style="text-align:center;min-height:34px"></p>
+  <button class="sec" id="duelWeiter" style="width:100%">Weiter</button>
+</div></div>
+
 <div class="overlay show" id="setupOverlay"><div class="modal">
   <h3>Neues Spiel</h3>
   <div id="resumeBox" style="display:none;margin-bottom:12px">
@@ -222,8 +255,146 @@ function mixRGB(c,hex,t){const b=hex2rgb(hex);
   return"rgb("+Math.round(c[0]+(b[0]-c[0])*t)+","+Math.round(c[1]+(b[1]-c[1])*t)+","+
     Math.round(c[2]+(b[2]-c[2])*t)+")";}
 
-function dispatch(a){const r=E.apply(G,a);if(!r.ok){flash(r.error);return false;}
-  G=r.state;render();save();return true;}
+/* ---------- Wuerfel ----------
+   Augen statt Ziffern, und ein Wurf, den man sieht. Vorher stand im
+   Abwehrfenster einfach die Zahl in einem Kaestchen und das Ergebnis nur
+   klein im Verlauf – man erfuhr, dass gekaempft wurde, sah es aber nie. */
+const AUGEN={1:[[2,2]],2:[[1,1],[3,3]],3:[[1,1],[2,2],[3,3]],
+  4:[[1,1],[1,3],[3,1],[3,3]],5:[[1,1],[1,3],[2,2],[3,1],[3,3]],
+  6:[[1,1],[1,3],[2,1],[2,3],[3,1],[3,3]]};
+function wuerfelEl(wert,seite,groesse){
+  const d=document.createElement("div");
+  d.className="wf "+seite;
+  if(groesse)d.style.setProperty("--k",groesse+"px");
+  setzeAugen(d,wert);
+  return d;
+}
+/* Derselbe Wuerfel als Zeichenkette fuer den Verlauf – dort werden die
+   Eintraege als HTML am Stueck gebaut, nicht als Elemente. */
+function miniWuerfel(wert,seite){
+  const augen=(AUGEN[wert]||AUGEN[1]).map(([r,c])=>'<i style="grid-area:'+r+"/"+c+'"></i>').join("");
+  return '<span class="wf '+seite+'" style="--k:19px;display:inline-grid">'+augen+"</span>";
+}
+function setzeAugen(el,wert){
+  el.innerHTML="";
+  for(const[r,c]of AUGEN[wert]||AUGEN[1]){
+    const i=document.createElement("i");
+    i.style.gridArea=r+"/"+c;
+    el.appendChild(i);
+  }
+  el.dataset.wert=wert;
+}
+/* Rollen lassen und auf dem Endwert stehenbleiben. Die Augen wechseln
+   waehrend des Wurfs; die Drehung macht die CSS-Animation. */
+function rollen(el,endwert,dauer,fertig){
+  el.classList.add("rollt");
+  const takt=setInterval(()=>setzeAugen(el,1+Math.floor(Math.random()*6)),65);
+  setTimeout(()=>{
+    clearInterval(takt);
+    el.classList.remove("rollt");
+    setzeAugen(el,endwert);
+    el.classList.add("landet");
+    setTimeout(()=>el.classList.remove("landet"),260);
+    if(fertig)fertig();
+  },dauer);
+}
+
+/* ---------- Duell ----------
+   Zeigt Paar fuer Paar, welcher Wuerfel welchen schlaegt. Gepaart wird
+   der Reihe nach – hoechster gegen hoechsten – genau wie im Regelkern;
+   bei Gleichstand gewinnt die Verteidigung. */
+let duellZeit=null,duellNr=0;
+function zeigeDuell(d,ctx){
+  /* Ein noch laufender Schliess-Auftrag vom vorigen Kampf wuerde sonst
+     mitten in diesen hineinfahren und ihn vorzeitig zumachen. */
+  if(duellZeit){clearTimeout(duellZeit);duellZeit=null;}
+  duellNr++;const meins=duellNr;
+  const box=$("duelPaare");box.innerHTML="";
+  $("duelTitle").textContent="Kampf um "+TERR[ctx.to].n;
+  $("duelAng").textContent=G.players[ctx.ang].name;
+  $("duelAng").style.color=G.players[ctx.ang].color;
+  $("duelVert").textContent=ctx.vert>=0&&G.players[ctx.vert]?G.players[ctx.vert].name:"Abwehr";
+  $("duelVert").style.color=ctx.vert>=0&&G.players[ctx.vert]?G.players[ctx.vert].color:"#8a97b3";
+  $("duelText").textContent="";
+
+  const paare=Math.min(d.a.length,d.d.length);
+  const zeilen=[];
+  const alle=[];
+  /* Erst alle Wuerfel, auch die ungepaarten: wer mit drei Wuerfeln gegen
+     einen antritt, soll seinen dritten trotzdem liegen sehen. */
+  for(let i=0;i<Math.max(d.a.length,d.d.length);i++){
+    const z=document.createElement("div");z.className="duellzeile";
+    const wa=i<d.a.length?wuerfelEl(1,"a",58):null;
+    const wd=i<d.d.length?wuerfelEl(1,"d",58):null;
+    const satz=document.createElement("div");satz.className="satz";
+    const leer=()=>{const s=document.createElement("div");s.style.width="58px";return s;};
+    z.appendChild(wa||leer());
+    z.appendChild(satz);
+    z.appendChild(wd||leer());
+    box.appendChild(z);
+    zeilen.push({z,wa,wd,satz,paar:i<paare});
+    if(wa){wa.__wert=d.a[i];alle.push(wa);}
+    if(wd){wd.__wert=d.d[i];alle.push(wd);}
+  }
+  $("duelOverlay").classList.add("show");
+
+  let offen=alle.length;
+  alle.forEach((el,i)=>rollen(el,el.__wert,620+i*90,()=>{if(--offen===0&&meins===duellNr)aufloesen();}));
+
+  function aufloesen(){
+    /* Bilanz vorab rechnen, nicht waehrend der Einblendung aufaddieren:
+       laeuft die letzte Zeile ohne Gegenwurf, kaeme sie sonst nie zustande. */
+    let aL=0,dL=0;
+    for(let i=0;i<paare;i++){if(d.a[i]>d.d[i])dL++;else aL++;}
+    const nameV=ctx.vert>=0&&G.players[ctx.vert]?G.players[ctx.vert].name:"Abwehr";
+
+    zeilen.forEach((zl,i)=>setTimeout(()=>{
+      if(meins!==duellNr)return;          // laengst vom naechsten Kampf abgeloest
+      zl.z.classList.add("da");
+      if(!zl.paar){zl.satz.textContent="ohne Gegenwurf";return;}
+      const angGewinnt=d.a[i]>d.d[i];
+      (angGewinnt?zl.wd:zl.wa).classList.add("verloren");
+      (angGewinnt?zl.wa:zl.wd).classList.add("gewonnen");
+      zl.satz.textContent=angGewinnt?"Abwehr verliert 1":"Angriff verliert 1";
+      zl.satz.classList.add(angGewinnt?"dv":"av");
+    },400+i*480));
+
+    const ende=400+zeilen.length*480;
+    setTimeout(()=>{
+      if(meins!==duellNr)return;
+      $("duelText").innerHTML="<b style='color:"+G.players[ctx.ang].color+"'>"+
+        G.players[ctx.ang].name+"</b> −"+aL+" &nbsp;·&nbsp; <b style='color:"+
+        (ctx.vert>=0&&G.players[ctx.vert]?G.players[ctx.vert].color:"#8a97b3")+"'>"+
+        nameV+"</b> −"+dL;
+    },ende);
+    /* Von selbst zugehen, sonst klickt man sich bei zwanzig Angriffen pro
+       Zug die Finger wund. Wer schneller ist, klickt trotzdem. */
+    duellZeit=setTimeout(schliesseDuell,ende+2000);
+  }
+}
+function schliesseDuell(){
+  if(duellZeit){clearTimeout(duellZeit);duellZeit=null;}
+  $("duelOverlay").classList.remove("show");
+}
+
+let kampfCtx=null;
+function dispatch(a){
+  /* Wer gegen wen – vor der Auswertung merken, danach ist pending weg. */
+  if(G){
+    if(a.type==="ATTACK")kampfCtx={to:a.to,ang:G.cur,vert:G.owner[a.to]};
+    else if(a.type==="DEFEND"&&G.pending)
+      kampfCtx={to:G.pending.to,ang:G.cur,vert:G.owner[G.pending.to]};
+  }
+  const vorher=G?G.log.length:0;
+  const r=E.apply(G,a);if(!r.ok){flash(r.error);return false;}
+  G=r.state;render();save();
+  /* Der Regelkern schreibt schon beim Angriff einen Eintrag mit den
+     Wuerfeln des Angreifers und leerer Gegenseite – das ist die Vorlage
+     fuer die Abwehrwahl, noch kein Kampf. Erst wenn beide Seiten gewuerfelt
+     haben, gibt es etwas aufzuloesen. */
+  const neu=G.log.slice(vorher).find(e=>e.d&&e.d.d&&e.d.d.length);
+  if(neu&&kampfCtx)zeigeDuell(neu.d,kampfCtx);
+  return true;}
 function flash(m){const d=$("log");const p=document.createElement("div");
   p.className="l-err";p.textContent="⚠ "+m;d.appendChild(p);d.scrollTop=d.scrollHeight;}
 function save(){if(!G)return;const ok=store(KEY,JSON.stringify({at:Date.now(),g:G}));
@@ -298,6 +469,10 @@ function openAttack(from,to){
     box.appendChild(b);}
   $("atkOverlay").classList.add("show");}
 $("aCancel").onclick=()=>{atkCtx=null;$("atkOverlay").classList.remove("show");};
+$("duelWeiter").onclick=schliesseDuell;
+/* Klick irgendwohin ins Fenster ueberspringt ebenfalls – Ungeduld ist beim
+   zwanzigsten Angriff die Regel, nicht die Ausnahme. */
+$("duelOverlay").onclick=schliesseDuell;
 
 /* Abwehr: der Verteidiger sieht den Wurf des Angreifers und entscheidet dann. */
 function renderDefend(){
@@ -307,7 +482,11 @@ function renderDefend(){
   $("defTitle").style.color=G.players[vert].color;
   $("defText").innerHTML="<b>"+G.players[G.cur].name+"</b> greift <b>"+TERR[p.to].n+
     "</b> mit "+p.aDice.length+(p.aDice.length===1?" Würfel":" Würfeln")+" an und würfelt:";
-  $("defDice").innerHTML=p.aDice.map(v=>"<span>"+v+"</span>").join("");
+  const dbox=$("defDice");dbox.innerHTML="";
+  p.aDice.forEach((v,i)=>{
+    const w=wuerfelEl(1,"a",56);dbox.appendChild(w);
+    rollen(w,v,480+i*90);
+  });
   $("defHint").innerHTML="<b>"+TERR[p.to].n+"</b> hat "+G.armies[p.to]+
     " Truppen. Bei Gleichstand gewinnt die Verteidigung.";
   const box=$("defPick");box.innerHTML="";
@@ -1240,8 +1419,8 @@ function render(){
       (G.opts.cards?' · '+G.hands[i].length+' Karten':''))+(p.alive?"":" ☠");pl.appendChild(r);});
   for(;logShown<G.log.length;logShown++){const e=G.log[logShown];
     const d=document.createElement("div");d.className=e.c;let h=e.t;
-    if(e.d)h+=' <span class="dice">'+e.d.a.map(x=>'<span class="die a">'+x+'</span>').join("")+'</span>'+
-             ' <span class="dice">'+e.d.d.map(x=>'<span class="die d">'+x+'</span>').join("")+'</span>';
+    if(e.d)h+=' <span class="dice">'+e.d.a.map(x=>miniWuerfel(x,"a")).join("")+'</span>'+
+             ' <span class="dice">'+e.d.d.map(x=>miniWuerfel(x,"d")).join("")+'</span>';
     d.innerHTML=h;$("log").appendChild(d);}
   $("log").scrollTop=$("log").scrollHeight;
   const np=$("nextPhase"),sk=$("skipAtk"),au=$("autoBtn"),hi=$("phaseHint");
