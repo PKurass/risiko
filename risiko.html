@@ -354,12 +354,20 @@ function isTarget(id){
 const Board3D=(function(){
 const S=0.09,PLATE=1.6;         // Maßstab und Plattenhöhe
 const WASSER=-0.4;              // Hoehe der Meeresoberflaeche
-/* Wie stark die Spielerfarbe die Laenderfarbe ueberdeckt. Bewusst hoch:
-   wem ein Land gehoert, soll man auf einen Blick sehen. Die SVG bringt zwar
-   die klassische Kontinent-Kodierung mit (Nordamerika gelb, Europa blau,
-   Asien gruen ...), aber der Besitz hat hier Vorrang vor der Geografie.
-   Wer es umgekehrt will, setzt den Wert herunter. */
-const BESITZ_ANTEIL=0.55;
+/* Wie stark die Spielerfarbe die Laenderfarbe ueberdeckt – in der
+   Besitzer-Ansicht ganz: alles, was einem Spieler gehoert, hat ueberall
+   dieselbe Farbe. Vorher wurde die Kontinentfarbe zu 45 % untergemischt,
+   und derselbe Spieler sah in Nordamerika orange aus und in Suedamerika
+   rot. Wer wem gehoert war damit nur zu erkennen, wenn man die
+   Kontinentfarben auswendig kann.
+
+   Die Struktur geht dabei nicht verloren: sie kommt nicht mehr aus der
+   Farbe, sondern aus der Graufassung der Malerei, die darueber liegt
+   (siehe entfaerben). Wer die Kontinente farblich sehen will, schaltet die
+   Ansicht um – dafuer ist sie da.
+
+   Ein Wert unter 1 mischt die Kontinentfarbe wieder unter. */
+const BESITZ_ANTEIL=1;
 /* Die gemalte Weltkarte (grafik/land-textur.js) liegt als eigene, hauchduenne
    Lage ueber den Platten – nicht als deren Textur. Grund: die Fugen zwischen
    den Laendern sind im Bild Loecher, keine gemalten Linien. Als eigene Lage
@@ -375,7 +383,7 @@ const MALEREI_HOEHE=0.09;       // Abstand darueber
 /* Wie stark die Plattenoberseite auf und ab geht (Welt-Einheiten, PLATE ist
    1.6). Damit wird aus der ueberall gleich hohen Klippe eine Kueste, die mal
    flach auslaeuft und mal steil abbricht. */
-const HOEHEN_SPIEL=0.8;
+const HOEHEN_SPIEL=1.15;
 /* Wie eng die Klippentextur laengs der Wand liegt. Die Vorlage liefert u in
    Welteinheiten; kleiner Wert = breitere Zuege. */
 const KLIPPE_U=0.34;
@@ -430,7 +438,7 @@ function gemalteTextur(){
 /* Graufassung derselben Malerei: nur noch Pinselstrich und Licht, keine
    Farbe. Ueber die Spielerfarbe gelegt bleibt die gemalte Anmutung, und
    die Farbe sagt trotzdem, wem das Land gehoert.
-   Die Grauwerte werden dabei in ein schmales helles Band gehoben (160-255).
+   Die Grauwerte werden dabei in ein helles Band gehoben (142-255).
    Grund: eine Textur kann nur abdunkeln, nie aufhellen – bei vollem Umfang
    saeuft jede Spielerfarbe zu Dunkelgrau ab. */
 function entfaerben(c,bild){
@@ -446,7 +454,7 @@ function entfaerben(c,bild){
   const spanne=Math.max(1,hi-lo);
   for(let i=0;i<p.length;i+=4){
     const l=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
-    const v=Math.max(0,Math.min(255,Math.round(160+95*((l-lo)/spanne))));
+    const v=Math.max(0,Math.min(255,Math.round(142+113*((l-lo)/spanne))));
     p[i]=p[i+1]=p[i+2]=v;
   }
   g.putImageData(d,0,0);
@@ -484,7 +492,11 @@ function rauschLage(x,z,skala){
   const u=rauschRoh(ix,iz+1)+(rauschRoh(ix+1,iz+1)-rauschRoh(ix,iz+1))*sx;
   return o+(u-o)*sz;
 }
-function rauschen(x,z){return 0.65*rauschLage(x,z,15)+0.35*rauschLage(x,z,5.5);}
+/* Die grobe Lage traegt den Hauptteil, die feine nur noch eine Spur. So
+   entstehen lange Verlaeufe – eine Kueste, die ueber mehrere Laender hinweg
+   ansteigt und wieder abfaellt – statt eines Auf und Ab von Punkt zu Punkt.
+   Mit gleichen Anteilen sah es zappelig aus, nicht gewachsen. */
+function rauschen(x,z){return 0.8*rauschLage(x,z,24)+0.2*rauschLage(x,z,9);}
 
 /* Wie hoch liegt die Plattenoberseite an dieser Stelle? Ohne das waeren
    alle Klippen exakt gleich hoch – der sicherste Weg, eine Landschaft wie
