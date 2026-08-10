@@ -395,6 +395,35 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   Oberseite (`userData.kante`). Ohne ihn verschmelzen zwei benachbarte Länder
   desselben Spielers optisch zu einer Fläche. Die Linie dient zugleich als
   Träger der Hervorhebung.
+- **Klippenhöhe:** `hoehenSpiel(x,z)` hebt und senkt die Plattenoberseite,
+  `verformen()` trägt das auf eine fertige Geometrie auf (nur oberhalb einer
+  Grenze, damit die Unterseite flach bleibt). Dadurch ist keine Klippe so
+  hoch wie ihre Nachbarin. Grundlage ist ein **Wertrauschen** (`rauschen`) –
+  ein Gitter fester Zufallszahlen, weich überblendet, zwei Lagen übereinander.
+  Entscheidend: es hängt **nur an der Weltlage**. Zwei Nachbarländer fragen
+  an der gemeinsamen Grenze dieselbe Stelle ab und bekommen denselben Wert,
+  ohne voneinander zu wissen. Mit einem Zufall *pro Land* klaffte an jeder
+  Grenze eine Stufe.
+  Mitverformt werden müssen alle Lagen, die auf der Oberseite liegen:
+  Malerei, Grenzlinie, Saum und die Höhe der Beschriftung.
+- **Klippen-UVs:** `klippenUv()` rechnet die Seitenwände neu. `ExtrudeGeometry`
+  legt sie in **Welteinheiten** an – v läuft von 1 unten bis 1−`PLATE` oben,
+  also über anderthalb Texturhöhen und verkehrt herum. Ein Verlauf, der unten
+  hell sein soll, wiederholt sich dabei mitten in der Wand. Jetzt bekommt jede
+  Wandsäule v=0 an der Wasserlinie und v=1 an der Oberkante, unabhängig davon,
+  wie hoch sie an dieser Stelle ist.
+- **Meer:** `seeTextur()` richtet sich nach der Küste statt nach der Bildmitte.
+  Die Umrisse aus `risiko-daten.js` werden mehrfach weichgezeichnet
+  übereinandergelegt (weit und blass bis eng und hell); daraus entsteht von
+  selbst der Flachwasser-Ring, den eine gemalte Insel hat. Vorher lag hier ein
+  runder Verlauf – ein Muster, das nichts davon wusste, wo Land liegt.
+- **Schaum:** `bandGeometrie` nimmt eine `streuung`, die die Bandbreite entlang
+  der Küste schwanken lässt und den Saum stellenweise ganz abreißen lässt.
+  Brandung ist nirgends gleichmäßig; ein konstant breites Band sah aus wie mit
+  dem Lineal gezogen. Zwei Fallen dabei: ein zu schmales Band ist auf dem
+  Bildschirm nur wenige Punkte stark (davon der weiße Teil ein halber) und
+  wirkt wie ein Strich – und Gischtflecken müssen deutlich **breiter als tief**
+  sein, sonst sieht der Saum aus wie ein Fell.
 - **Cel-Shading:** Ober- und Seitenflächen nutzen `MeshToonMaterial` mit
   einer schmalen Verlaufstextur (`toonStufen`). `NearestFilter` verhindert
   das Blenden zwischen den Stufen – daher die harten Lichtkanten und die

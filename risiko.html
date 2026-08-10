@@ -371,7 +371,14 @@ const BESITZ_ANTEIL=0.55;
    sehen bekommt. Genau das ist beim ersten Anlauf passiert. */
 const FASE_DICKE=0.14,FASE_BREITE=0.22;
 const DECKEL=PLATE+FASE_DICKE;  // wahre Hoehe der Plattenoberseite
-const MALEREI_HOEHE=0.03;       // Abstand darueber
+const MALEREI_HOEHE=0.09;       // Abstand darueber
+/* Wie stark die Plattenoberseite auf und ab geht (Welt-Einheiten, PLATE ist
+   1.6). Damit wird aus der ueberall gleich hohen Klippe eine Kueste, die mal
+   flach auslaeuft und mal steil abbricht. */
+const HOEHEN_SPIEL=0.8;
+/* Wie eng die Klippentextur laengs der Wand liegt. Die Vorlage liefert u in
+   Welteinheiten; kleiner Wert = breitere Zuege. */
+const KLIPPE_U=0.34;
 const MALEREI_DECKUNG=1;        // 0 = aus, 1 = Malerei voll deckend
 const KANTE=0x0b1016;           // ruhende Grenzlinie
 const KANTE_SEL=0xffffff;       // ausgewaehltes Land
@@ -444,6 +451,82 @@ function entfaerben(c,bild){
   }
   g.putImageData(d,0,0);
 }
+/* ---------- Wertrauschen ----------
+   Ein Gitter fester Zufallszahlen, dazwischen weich ueberblendet. Zwei
+   Lagen uebereinander: eine grobe fuer die grossen Zuege, eine feine fuer
+   das Zittern dazwischen. Das ergibt Werte, die sich benehmen wie Natur –
+   nirgends eine gerade Linie, nirgends eine Wiederholung, die auffaellt.
+
+   Entscheidend ist, dass alles nur an der Weltlage haengt und an nichts
+   sonst: zwei Nachbarlaender fragen an ihrer gemeinsamen Grenze dieselbe
+   Stelle ab und bekommen denselben Wert. Sie passen zusammen, ohne
+   voneinander zu wissen. Mit einem Zufall pro Land ginge das nicht – da
+   klaffte an jeder Grenze eine Stufe. */
+const RAUSCH_N=64;
+const rauschFeld=(function(){
+  let z=13579;const a=new Float32Array(RAUSCH_N*RAUSCH_N);
+  for(let i=0;i<a.length;i++){z=(z*16807)%2147483647;a[i]=z/2147483647;}
+  return a;
+})();
+function rauschRoh(ix,iz){
+  const x=((ix%RAUSCH_N)+RAUSCH_N)%RAUSCH_N,z=((iz%RAUSCH_N)+RAUSCH_N)%RAUSCH_N;
+  return rauschFeld[z*RAUSCH_N+x];
+}
+function rauschLage(x,z,skala){
+  const fx=x/skala,fz=z/skala;
+  const ix=Math.floor(fx),iz=Math.floor(fz);
+  const tx=fx-ix,tz=fz-iz;
+  /* Glaettungskurve 3t²-2t³: an den Gitterpunkten ist die Steigung null,
+     deshalb sieht man das Gitter nicht. Lineare Ueberblendung wuerde ein
+     Karomuster durchscheinen lassen. */
+  const sx=tx*tx*(3-2*tx),sz=tz*tz*(3-2*tz);
+  const o=rauschRoh(ix,iz)+(rauschRoh(ix+1,iz)-rauschRoh(ix,iz))*sx;
+  const u=rauschRoh(ix,iz+1)+(rauschRoh(ix+1,iz+1)-rauschRoh(ix,iz+1))*sx;
+  return o+(u-o)*sz;
+}
+function rauschen(x,z){return 0.65*rauschLage(x,z,15)+0.35*rauschLage(x,z,5.5);}
+
+/* Wie hoch liegt die Plattenoberseite an dieser Stelle? Ohne das waeren
+   alle Klippen exakt gleich hoch – der sicherste Weg, eine Landschaft wie
+   aus dem Computer aussehen zu lassen. */
+function hoehenSpiel(x,z){return (rauschen(x,z)-0.5)*HOEHEN_SPIEL;}
+/* Die Seitenwaende brauchen eigene UV-Koordinaten. ExtrudeGeometry legt sie
+   in WELT-Einheiten an, nicht auf 0..1 normiert: die v-Koordinate laeuft von
+   1 an der Unterkante bis 1-PLATE oben, also ueber anderthalb Texturhoehen
+   und noch dazu verkehrt herum. Ein Verlauf, der unten hell sein soll,
+   wiederholt sich dabei mitten in der Wand – man sieht Baender, die niemand
+   gezeichnet hat.
+
+   Hier bekommt jede Wandsaeule stattdessen v=0 an der Wasserlinie und v=1 an
+   der Oberkante, egal wie hoch sie an dieser Stelle gerade ist. Dadurch
+   sitzt der Sandsaum immer am Wasser und die dunkle Krone immer oben, auch
+   wenn die Klippe nebenan doppelt so hoch ist. u wird nur gestaucht; die
+   Richtungswahl der Vorlage (laengs der Wand statt quer) bleibt erhalten. */
+function klippenUv(geo,unten){
+  const p=geo.attributes.position,uv=geo.attributes.uv;
+  for(const grp of geo.groups){
+    if(grp.materialIndex!==1)continue;      // 1 = Seitenwaende
+    for(let i=grp.start;i<grp.start+grp.count;i++){
+      const y=p.getY(i),oben=DECKEL+hoehenSpiel(p.getX(i),p.getZ(i));
+      uv.setXY(i,uv.getX(i)*KLIPPE_U,Math.max(0,Math.min(1,(y-unten)/Math.max(0.2,oben-unten))));
+    }
+  }
+  uv.needsUpdate=true;
+}
+
+/* Dieselbe Verformung auf eine fertige Geometrie anwenden. `abGrenze` haelt
+   die Unterseite flach: verschoben wird nur, was oben liegt. */
+function verformen(geo,abGrenze){
+  const p=geo.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const y=p.getY(i);
+    if(y<abGrenze)continue;
+    p.setY(i,y+hoehenSpiel(p.getX(i),p.getZ(i)));
+  }
+  p.needsUpdate=true;
+  geo.computeVertexNormals();
+}
+
 /* UV-Koordinaten aus der Weltlage statt aus der Einzelform: jeder Punkt
    bekommt die Stelle, an der er auf der Gesamtkarte liegt. Nur so setzen
    sich 54 getrennte Flaechen wieder zu einem durchgehenden Bild zusammen. */
@@ -457,18 +540,73 @@ function weltUv(geo){
   geo.setAttribute("uv",new THREE.BufferAttribute(uv,2));
 }
 
-/* Meer als weicher Verlauf statt einer flachen Farbe: in der Mitte hell,
-   zu den Raendern hin tief. Das gibt der Karte eine Mitte und laesst die
-   Kanten der Szene auslaufen, statt sie hart abzuschneiden. */
+/* Das Meer richtet sich nach der Kueste, nicht nach der Bildmitte.
+   Vorher lag hier ein runder Verlauf – hell im Zentrum, dunkel zum Rand.
+   Das ist ein Muster, kein Meer: es weiss nichts davon, wo Land liegt, und
+   sieht in jeder Ecke gleich aus.
+
+   Jetzt werden die Umrisse aus risiko-daten.js mehrfach weichgezeichnet
+   uebereinandergelegt, von weit und blass bis eng und hell. Wo Land ist,
+   entsteht dabei von selbst ein Ring aus Flachwasser, der nach aussen ins
+   Tiefblau abfaellt – dieselbe Staffelung, die eine gemalte Insel hat.
+   Weil die Karte fest ist, wird das einmal beim Start gerechnet.
+
+   MASSSTAB: die Meeresflaeche ist MEER_WEITE-mal so gross wie die Karte,
+   die Karte liegt also mittig in einem Rand aus offener See. */
+const MEER_WEITE=2.6;
 function seeTextur(){
   const THREE=window.THREE;
-  const c=document.createElement("canvas");c.width=c.height=512;
+  const CW=1024,CH=Math.round(CW*M.H/M.W);
+  const c=document.createElement("canvas");c.width=CW;c.height=CH;
   const x=c.getContext("2d");
-  const g=x.createRadialGradient(256,256,20,256,256,250);
-  g.addColorStop(0,"#4f95a8");g.addColorStop(0.35,"#3d7f96");
-  g.addColorStop(0.65,"#2b5a76");g.addColorStop(1,"#16324a");
-  x.fillStyle=g;x.fillRect(0,0,512,512);
-  return new THREE.CanvasTexture(c);
+  x.fillStyle="#12304a";x.fillRect(0,0,CW,CH);
+
+  /* Kartenpunkt auf Leinwandpunkt: die Karte fuellt den mittleren Anteil
+     1/MEER_WEITE der Flaeche. */
+  const f=CW/(M.W*MEER_WEITE),randX=(CW-M.W*f)/2,randY=(CH-M.H*f)/2;
+  const landPfad=()=>{
+    x.beginPath();
+    for(const teile of Object.values(M.polys))
+      for(const ring of teile){
+        ring.forEach((p,i)=>{const px=randX+p[0]*f,py=randY+p[1]*f;
+          i?x.lineTo(px,py):x.moveTo(px,py);});
+        x.closePath();
+      }
+  };
+
+  /* Ohne ctx.filter (aeltere Browser) bliebe es bei harten Ringen. Dann
+     lieber der schlichte Verlauf von frueher als eine Karte mit Schablonen-
+     kanten – deshalb die Vorpruefung. */
+  if(typeof x.filter==="string"){
+    for(const [unschaerfe,farbe] of [[62,"#1b4f6b"],[34,"#276f8a"],
+                                     [17,"#3792a3"],[8,"#57b4b6"],[3.5,"#7fcfc6"]]){
+      x.filter="blur("+unschaerfe+"px)";
+      x.fillStyle=farbe;landPfad();x.fill();
+    }
+    x.filter="none";
+  }else{
+    const g=x.createRadialGradient(CW/2,CH/2,20,CW/2,CH/2,CW/2);
+    g.addColorStop(0,"#3d7f96");g.addColorStop(1,"#16324a");
+    x.fillStyle=g;x.fillRect(0,0,CW,CH);
+  }
+
+  /* Bewegung in der offenen See: lange, flache Zuege in leicht anderem
+     Blau. Sie geben dem Wasser eine Richtung, ohne ein Muster zu bilden. */
+  let z=555777;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
+  if(typeof x.filter==="string")x.filter="blur(9px)";
+  for(let i=0;i<90;i++){
+    const cx=zuf()*CW,cy=zuf()*CH,l=60+zuf()*260,h=6+zuf()*20;
+    const w=(zuf()-0.5)*0.7;
+    x.save();x.translate(cx,cy);x.rotate(w);
+    x.fillStyle=(zuf()<0.5?"rgba(126,196,206,":"rgba(12,40,64,")+(0.05+zuf()*0.09)+")";
+    x.beginPath();x.ellipse(0,0,l/2,h/2,0,0,6.3);x.fill();
+    x.restore();
+  }
+  if(typeof x.filter==="string")x.filter="none";
+
+  const t=new THREE.CanvasTexture(c);
+  t.anisotropy=rend?rend.capabilities.getMaxAnisotropy():1;
+  return t;
 }
 
 /* ---------- prozedurale Texturen ----------
@@ -500,31 +638,57 @@ function landTextur(){
   return t;
 }
 
-/* Klippen: senkrechte Felsstreifen, nach unten dunkler. Die Seitenflaechen
-   der Extrusion bekommen ihre v-Koordinate aus der Plattenhoehe, u laeuft
-   an der Kueste entlang – deshalb wirken senkrechte Streifen hier richtig. */
+/* Klippen: Erdwand mit hellem Sandsaum am Wasser. Die Seitenflaechen der
+   Extrusion bekommen ihre v-Koordinate aus der Plattenhoehe (v=0 unten),
+   u laeuft an der Kueste entlang.
+
+   Frueher standen hier scharfe senkrechte Felsstreifen und waagerechte
+   Gesteinsbaender – zusammen mit der ueberall gleichen Hoehe sah das nach
+   Steinbruch aus. Jetzt sind es weiche, schraege Pinselzuege in warmen
+   Erdtoenen, unten heller (Sand, Gischt) statt dunkler. Kanten gibt es
+   keine mehr: alles laeuft aus, wie mit dem Pinsel aufgetragen. */
 function klippenTextur(){
   const THREE=window.THREE;
-  const c=document.createElement("canvas");c.width=128;c.height=128;
+  const c=document.createElement("canvas");c.width=256;c.height=256;
   const x=c.getContext("2d");
-  x.fillStyle="#ffffff";x.fillRect(0,0,128,128);
+  x.fillStyle="#ffffff";x.fillRect(0,0,256,256);
   let z=987654;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
-  for(let i=0;i<70;i++){
-    const bx=zuf()*128,bw=1+zuf()*7,d=0.06+zuf()*0.16;
-    x.fillStyle="rgba(60,45,32,"+d+")";x.fillRect(bx,0,bw,128);
+
+  /* Breite, weiche Zuege in wechselnder Neigung. Nichts steht senkrecht –
+     eine gewachsene Boeschung hat keine Lote. */
+  for(let i=0;i<90;i++){
+    const bx=zuf()*256,bw=6+zuf()*26,neig=(zuf()-0.5)*34;
+    const dunkel=zuf()<0.55;
+    const g=x.createLinearGradient(bx-bw/2,0,bx+bw/2,0);
+    const a=0.04+zuf()*0.10;
+    const farbe=dunkel?"rgba(78,58,40,":"rgba(255,236,205,";
+    g.addColorStop(0,farbe+"0)");
+    g.addColorStop(0.5,farbe+a+")");
+    g.addColorStop(1,farbe+"0)");
+    x.save();x.translate(bx,128);x.rotate(neig*Math.PI/180);x.translate(-bx,-128);
+    x.fillStyle=g;x.fillRect(bx-bw/2,-90,bw,436);
+    x.restore();
   }
-  for(let i=0;i<10;i++){                       // waagerechte Gesteinsbaender
-    const by=zuf()*128;
-    x.fillStyle="rgba(255,245,225,"+(0.04+zuf()*0.06)+")";
-    x.fillRect(0,by,128,1+zuf()*3);
+  /* Ein paar dunkle Mulden und helle Buckel, damit die Wand nicht wie
+     eine Tapete gleichmaessig durchlaeuft. */
+  for(let i=0;i<40;i++){
+    const cx=zuf()*256,cy=zuf()*256,r=14+zuf()*46;
+    const g=x.createRadialGradient(cx,cy,0,cx,cy,r);
+    const dunkel=zuf()<0.5;
+    g.addColorStop(0,(dunkel?"rgba(64,46,30,":"rgba(255,240,214,")+(0.05+zuf()*0.09)+")");
+    g.addColorStop(1,"rgba(255,255,255,0)");
+    x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,6.3);x.fill();
   }
-  const g=x.createLinearGradient(0,0,0,128);   // unten dunkler (v=0 ist unten)
-  g.addColorStop(0,"rgba(20,12,6,0.55)");
-  g.addColorStop(0.45,"rgba(20,12,6,0.12)");
-  g.addColorStop(1,"rgba(255,255,255,0)");
-  x.fillStyle=g;x.fillRect(0,0,128,128);
+  /* Senkrechter Verlauf: unten heller Sand am Wasser, oben etwas
+     zurueckgenommen, damit die Deckflaeche sich absetzt. */
+  const g=x.createLinearGradient(0,0,0,256);
+  g.addColorStop(0.00,"rgba(255,241,214,0.42)");
+  g.addColorStop(0.16,"rgba(255,236,206,0.16)");
+  g.addColorStop(0.55,"rgba(255,255,255,0)");
+  g.addColorStop(1.00,"rgba(46,34,22,0.26)");
+  x.fillStyle=g;x.fillRect(0,0,256,256);
   const t=new THREE.CanvasTexture(c);
-  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(7,1);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
   return t;
 }
 
@@ -533,21 +697,51 @@ function klippenTextur(){
    flipY=false, damit Zeile 0 der Textur der Innenkante (v=0) entspricht. */
 function schaumTextur(){
   const THREE=window.THREE;
-  const c=document.createElement("canvas");c.width=128;c.height=128;
+  const B=512,H=128;
+  const c=document.createElement("canvas");c.width=B;c.height=H;
   const x=c.getContext("2d");
-  const g=x.createLinearGradient(0,0,0,128);
-  g.addColorStop(0.00,"rgba(255,255,255,0.92)");
-  g.addColorStop(0.09,"rgba(255,255,255,0.72)");
-  g.addColorStop(0.20,"rgba(226,252,250,0.50)");
-  g.addColorStop(0.42,"rgba(122,214,214,0.34)");
-  g.addColorStop(0.70,"rgba(96,190,200,0.15)");
-  g.addColorStop(1.00,"rgba(90,185,198,0)");
-  x.fillStyle=g;x.fillRect(0,0,128,128);
-  // unregelmaessige Gischtblasen, damit die Kante nicht wie gezogen wirkt
   let z=24680;const zuf=()=>{z=(z*16807)%2147483647;return z/2147483647;};
-  for(let i=0;i<160;i++){
-    const bx=zuf()*128,by=Math.pow(zuf(),2.2)*34,r=1+zuf()*4.5;
-    x.fillStyle="rgba(255,255,255,"+(0.16+zuf()*0.5)+")";
+
+  /* Grundverlauf: innen Gischt, dann Flachwasser, nach aussen auslaufend.
+     Er allein wirkte frueher wie ein gezogener Rand – deshalb ist er hier
+     nur die Unterlage, und alles Weitere bricht ihn wieder auf. */
+  const g=x.createLinearGradient(0,0,0,H);
+  g.addColorStop(0.00,"rgba(255,255,255,0.62)");
+  g.addColorStop(0.09,"rgba(250,255,255,0.40)");
+  g.addColorStop(0.24,"rgba(216,248,246,0.26)");
+  g.addColorStop(0.48,"rgba(160,230,226,0.17)");
+  g.addColorStop(0.74,"rgba(118,206,212,0.08)");
+  g.addColorStop(1.00,"rgba(104,196,206,0)");
+  x.fillStyle=g;x.fillRect(0,0,B,H);
+
+  /* Die Brandung anschliessend stellenweise wegnehmen: lange, weiche
+     Loecher laengs der Kueste. Danach ist der Saum nirgends mehr gleich
+     dick, ohne dass ein Muster erkennbar waere. */
+  x.globalCompositeOperation="destination-out";
+  if(typeof x.filter==="string")x.filter="blur(7px)";
+  for(let i=0;i<30;i++){
+    const cx=zuf()*B,l=40+zuf()*170,h=20+zuf()*80;
+    const cy=zuf()<0.55?zuf()*34:zuf()*H;
+    x.fillStyle="rgba(0,0,0,"+(0.35+zuf()*0.55)+")";
+    x.beginPath();x.ellipse(cx,cy,l/2,h/2,(zuf()-0.5)*0.5,0,6.3);x.fill();
+  }
+  if(typeof x.filter==="string")x.filter="none";
+  x.globalCompositeOperation="source-over";
+
+  /* Brandungsflecken: breite, flache Aufhellungen laengs der Kueste. Sie
+     muessen deutlich breiter als tief sein – im ersten Anlauf waren sie
+     schmal und tief, und der Saum sah aus wie ein Fell. */
+  if(typeof x.filter==="string")x.filter="blur(4px)";
+  for(let i=0;i<34;i++){
+    const cx=zuf()*B,l=40+zuf()*150,tiefe=7+Math.pow(zuf(),1.6)*26;
+    x.fillStyle="rgba(255,255,255,"+(0.10+zuf()*0.26)+")";
+    x.beginPath();x.ellipse(cx,tiefe*0.45,l/2,tiefe*0.7,0,0,6.3);x.fill();
+  }
+  if(typeof x.filter==="string")x.filter="none";
+  // einzelne Blasen ganz vorn an der Kante
+  for(let i=0;i<150;i++){
+    const bx=zuf()*B,by=Math.pow(zuf(),2.6)*18,r=0.7+zuf()*2.4;
+    x.fillStyle="rgba(255,255,255,"+(0.10+zuf()*0.34)+")";
     x.beginPath();x.arc(bx,by,r,0,6.3);x.fill();
   }
   const t=new THREE.CanvasTexture(c);
@@ -590,7 +784,7 @@ function trifftLand(x,y,ausser,reg){
    aus den beiden anliegenden Kanten, damit auch Buchten und Landzungen
    stimmen. Zwei Verwendungen: der Schaumsaum am Wasser und der weiche
    Kantenschatten oben auf der Platte. */
-function bandGeometrie({loop,breite,hoehe,nurKueste,id,reg}){
+function bandGeometrie({loop,breite,hoehe,nurKueste,id,reg,mitHoehenSpiel,streuung}){
   const THREE=window.THREE;
   const n=loop.length;
   let flaeche=0;
@@ -605,9 +799,23 @@ function bandGeometrie({loop,breite,hoehe,nurKueste,id,reg}){
     const a=kanteN(zur,p),b=kanteN(p,vor);
     let nx=a[0]+b[0],ny=a[1]+b[1];const L=Math.hypot(nx,ny)||1;nx/=L;ny/=L;
     // fuer den Schaum: kurz nach draussen tasten – trifft das noch Land, ist hier kein Meer
-    nimm.push(nurKueste?!trifftLand(p[0]+nx*4,p[1]+ny*4,id,reg):true);
-    const qi=mapPt(p[0],p[1]),qa=mapPt(p[0]+nx*breite,p[1]+ny*breite);
-    pos.push(qi[0],hoehe,-qi[1], qa[0],hoehe,-qa[1]);
+    let dabei=nurKueste?!trifftLand(p[0]+nx*4,p[1]+ny*4,id,reg):true;
+    const qi=mapPt(p[0],p[1]);
+    /* Streuung: das Band wird entlang der Kueste mal breiter, mal schmaler,
+       und reisst stellenweise ganz ab. Ein gleich breiter Saum ringsherum
+       ist das, was den Schaum vorher wie mit dem Lineal gezogen aussehen
+       liess – Brandung ist nirgends gleichmaessig. */
+    let br=breite;
+    if(streuung){
+      const w=rauschLage(qi[0],-qi[1],3.2)*0.6+rauschLage(qi[0],-qi[1],9)*0.4;
+      if(w<streuung.abriss)dabei=false;
+      br*=streuung.min+(streuung.max-streuung.min)*w;
+    }
+    const qa=mapPt(p[0]+nx*br,p[1]+ny*br);
+    nimm.push(dabei);
+    const hi=hoehe+(mitHoehenSpiel?hoehenSpiel(qi[0],-qi[1]):0);
+    const ha=hoehe+(mitHoehenSpiel?hoehenSpiel(qa[0],-qa[1]):0);
+    pos.push(qi[0],hi,-qi[1], qa[0],ha,-qa[1]);
     uv.push(laenge,0, laenge,1);
     laenge+=Math.hypot(vor[0]-p[0],vor[1]-p[1])/26;
   }
@@ -721,7 +929,7 @@ function build(){
   fill.position.set(80,45,-70);scene.add(fill);
 
   // Meer
-  const seaGeo=new THREE.PlaneGeometry(M.W*S*2.6,M.H*S*2.6);
+  const seaGeo=new THREE.PlaneGeometry(M.W*S*MEER_WEITE,M.H*S*MEER_WEITE);
   const seaMat=new THREE.MeshLambertMaterial({map:seeTextur()});
   sea=new THREE.Mesh(seaGeo,seaMat);sea.rotation.x=-Math.PI/2;
   sea.position.y=WASSER;sea.receiveShadow=true;scene.add(sea);
@@ -753,9 +961,14 @@ function build(){
       const geo=new THREE.ExtrudeGeometry(shape,{depth:PLATE,bevelEnabled:true,
         bevelThickness:FASE_DICKE,bevelSize:FASE_BREITE,bevelSegments:2});
       geo.rotateX(-Math.PI/2);        // flach auf den Boden legen
+      /* Oberseite auf und ab, Unterseite flach. Dadurch bekommt die Klippe
+         an jeder Stelle eine andere Hoehe – der eine Zug, der am meisten
+         gegen den Eindruck "am Rechner erzeugt" hilft. */
+      verformen(geo,PLATE*0.5);
+      klippenUv(geo,-FASE_DICKE);
       const top=new THREE.MeshToonMaterial({color:colorHex(id),map:texLand,
         gradientMap:stufenLand,side:THREE.DoubleSide});
-      const side=new THREE.MeshToonMaterial({color:0x8a6b4f,map:texKlippe,
+      const side=new THREE.MeshToonMaterial({color:0x9c7c5c,map:texKlippe,
         gradientMap:stufenKlippe,side:THREE.DoubleSide});
       const mesh=new THREE.Mesh(geo,[top,side]);
       mesh.castShadow=true;mesh.receiveShadow=true;
@@ -766,7 +979,8 @@ function build(){
          dann nicht mehr, wo eins aufhoert. Die Linie dient zugleich als
          Hervorhebung fuer Auswahl und Angriffsziele (siehe recolor). */
       const pts=loop.map(p=>{const q=mapPt(p[0],p[1]);
-        return new THREE.Vector3(q[0],DECKEL+MALEREI_HOEHE+0.03,-q[1]);});
+        return new THREE.Vector3(q[0],
+          DECKEL+MALEREI_HOEHE+0.03+hoehenSpiel(q[0],-q[1]),-q[1]);});
       const kante=new THREE.LineLoop(
         new THREE.BufferGeometry().setFromPoints(pts),
         new THREE.LineBasicMaterial({color:KANTE,transparent:true,opacity:0.55}));
@@ -782,6 +996,10 @@ function build(){
         const flach=new THREE.ShapeGeometry(shape);
         flach.rotateX(-Math.PI/2);
         flach.translate(0,DECKEL+MALEREI_HOEHE,0);
+        /* Dieselbe Verformung wie die Platte darunter. ShapeGeometry und
+           die Deckflaeche der Extrusion werden aus denselben Punkten
+           dreieckig zerlegt, also bleiben beide Flaechen parallel. */
+        verformen(flach,-1e9);
         weltUv(flach);
         const kont=faerbung==="kontinent";
         const mal=new THREE.Mesh(flach,new THREE.MeshToonMaterial({
@@ -794,9 +1012,14 @@ function build(){
         mal.userData.malerei=true;gmesh.add(mal);
       }
 
-      const band=bandGeometrie({loop,breite:7,hoehe:WASSER+0.04,nurKueste:true,id,reg});
+      /* Breit genug, dass man die Brandung sieht: ein schmaler Saum war auf
+         dem Bildschirm nur wenige Punkte stark, davon der weisse Teil ein
+         halber – deshalb wirkte er frueher wie ein duenner Strich. */
+      const band=bandGeometrie({loop,breite:21,hoehe:WASSER+0.06,nurKueste:true,id,reg,
+        streuung:{min:0.5,max:1.4,abriss:0.12}});
       if(band)teileSchaum.push(band);
-      const saum=bandGeometrie({loop,breite:-1.7,hoehe:DECKEL+MALEREI_HOEHE+0.05,nurKueste:false});
+      const saum=bandGeometrie({loop,breite:-1.7,hoehe:DECKEL+MALEREI_HOEHE+0.05,
+        nurKueste:false,mitHoehenSpiel:true});
       if(saum)teileSaum.push(saum);
     });
     group.add(gmesh);meshes[id]=gmesh;
@@ -875,7 +1098,9 @@ function drawLabels(){
   Object.keys(TERR).forEach(id=>{
     const c=M.center[id];if(!c)return;
     const q=mapPt(c.x,c.y);
-    const s=toScreen(new THREE.Vector3(q[0],PLATE+0.4,-q[1]));
+    /* Die Beschriftung muss mit der Oberseite mitwandern, sonst sinkt sie
+       dort ins Land, wo die Verformung die Platte anhebt. */
+    const s=toScreen(new THREE.Vector3(q[0],DECKEL+0.35+hoehenSpiel(q[0],-q[1]),-q[1]));
     if(s[2]>1)return;
     if(s[0]<-60||s[0]>labW+60||s[1]<-40||s[1]>labH+40)return;
     eintraege.push({id,x:s[0],y:s[1]+3*k,z:s[2]});

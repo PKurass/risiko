@@ -221,8 +221,9 @@ Spielstand wird automatisch im Browser gespeichert.
 
 Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 
-- **Optik** – erste Runde ist durch (Schatten, Grenzlinien, Meer-Verlauf,
-  überlappungsfreie Beschriftung). Feinschliff jederzeit möglich.
+- **Optik** – gemalte Weltkarte liegt auf, Klippen laufen ungleichmäßig hoch,
+  das Meer hat Flachwasser entlang der Küsten, der Schaumsaum schwankt und
+  reißt stellenweise ab. Feinschliff jederzeit möglich.
 - **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
   aber noch nicht gebaut. Der Sichtfilter `viewFor` steht bereits
   (DOKUMENTATION.md 4.6); offen ist die Serverwahl. **Wichtig dabei:**
