@@ -766,6 +766,102 @@ function klippenUv(geo,unten){
   uv.needsUpdate=true;
 }
 
+/* ---------- Truppen als Figuren ----------
+   Statt einer Zahl in einem Kreis stehen die Truppen als Figuren auf dem
+   Land. Aufgeteilt wird wie bei den Spielsteinen im Karton: Zehner, Fuenfer,
+   Einer. 23 Truppen sind also zwei grosse, keine mittlere und drei kleine
+   Figuren – fuenf Steine statt dreiundzwanzig.
+
+   Gezeichnet wird mit InstancedMesh: EIN Aufruf an die Grafikkarte je
+   Spieler und Groesse statt einer je Figur. Ohne das waeren es schnell
+   zweihundert Einzelobjekte, und das Drehen der Karte wuerde ruckeln.
+   Die Zahl bleibt trotzdem stehen – wer angreift, muss sie genau kennen. */
+const TRUPPE_MASS=2.6;          // Gesamtgroesse der Figuren
+const TRUPPEN_PLATZ=280;        // Figuren je Spieler und Groesse, grosszuegig
+const STAFFEL=[{wert:10,art:2},{wert:5,art:1},{wert:1,art:0}];
+/* Feste Standplaetze rund um die Landesmitte, von innen nach aussen. Die
+   grossen Figuren kommen zuerst und stehen deshalb in der Mitte. */
+const PLAETZE=[[0,0],[0.52,0.30],[-0.52,0.30],[0.52,-0.30],[-0.52,-0.30],
+               [0,0.62],[0,-0.62],[1.04,0],[-1.04,0],[0.52,0.90],[-0.52,0.90]];
+let truppenGruppe=null,truppenMeshes=null,truppenFarben=null;
+
+function truppenGeometrien(){
+  const THREE=window.THREE;
+  const m=TRUPPE_MASS;
+  /* Wenige Seiten, absichtlich: die Kanten passen zum Cel-Shading, und aus
+     der Spielentfernung sieht man ohnehin nur die Silhouette. */
+  const klein=new THREE.CylinderGeometry(0.05*m,0.20*m,0.46*m,6);
+  const mittel=new THREE.CylinderGeometry(0.13*m,0.26*m,0.62*m,6);
+  const gross=new THREE.CylinderGeometry(0.24*m,0.30*m,0.78*m,6);
+  [klein,mittel,gross].forEach((g,i)=>g.translate(0,[0.23,0.31,0.39][i]*m,0));
+  return[klein,mittel,gross];
+}
+function truppenAufbauen(spieler){
+  const THREE=window.THREE;
+  if(!truppenGruppe){truppenGruppe=new THREE.Group();scene.add(truppenGruppe);}
+  truppenGruppe.clear();
+  const geos=truppenGeometrien();
+  const stufen=toonStufen([92,140,186,220]);
+  truppenMeshes=[];
+  truppenFarben=spieler.map(p=>p.color);
+  spieler.forEach((p,pi)=>{
+    truppenMeshes.push(geos.map(g=>{
+      /* Deutlich dunkler als das Land, auf dem sie stehen. In der
+         Besitzer-Ansicht hat die Flaeche ja genau die Spielerfarbe – ein
+         Stein in derselben Farbe verschwindet darauf spurlos. */
+      const farbe=new THREE.Color(p.color).multiplyScalar(0.48);
+      const mat=new THREE.MeshToonMaterial({color:farbe,gradientMap:stufen});
+      const m=new THREE.InstancedMesh(g,mat,TRUPPEN_PLATZ);
+      m.castShadow=true;m.count=0;
+      /* Angeklickt wird das Land darunter, nicht die Figur. */
+      m.raycast=function(){};
+      m.frustumCulled=false;
+      truppenGruppe.add(m);
+      return m;
+    }));
+  });
+}
+function truppenAktualisieren(){
+  const THREE=window.THREE;
+  if(!G||!G.players)return;
+  const passt=truppenMeshes&&truppenMeshes.length===G.players.length&&
+    truppenFarben.every((f,i)=>G.players[i]&&G.players[i].color===f);
+  if(!passt)truppenAufbauen(G.players);
+  const zaehler=truppenMeshes.map(()=>[0,0,0]);
+  const mat=new THREE.Matrix4(),pos=new THREE.Vector3(),
+        drehung=new THREE.Quaternion(),eins=new THREE.Vector3(1,1,1);
+  for(const id in G.owner){
+    const o=G.owner[id],n=G.armies[id];
+    if(o===NONE||!n||!truppenMeshes[o])continue;
+    const c=M.center[id];if(!c)continue;
+    const q=mapPt(c.x,c.y);
+    let rest=n,platz=0;
+    for(const st of STAFFEL){
+      let k=Math.floor(rest/st.wert);rest-=k*st.wert;
+      while(k-->0&&platz<PLAETZE.length){
+        const [dx,dz]=PLAETZE[platz++];
+        const x=q[0]+dx*TRUPPE_MASS*0.55,z=-q[1]+dz*TRUPPE_MASS*0.55;
+        pos.set(x,DECKEL+MALEREI_HOEHE+0.02+hoehenSpiel(x,z),z);
+        /* Jede Figur ein wenig anders gedreht – exakt ausgerichtete Steine
+           sehen aus wie hingerechnet, nicht wie hingestellt. */
+        drehung.setFromAxisAngle(new THREE.Vector3(0,1,0),rauschLage(x*9,z*9,1.1)*6.283);
+        mat.compose(pos,drehung,eins);
+        const m=truppenMeshes[o][st.art];
+        m.setMatrixAt(zaehler[o][st.art]++,mat);
+      }
+    }
+  }
+  truppenMeshes.forEach((satz,pi)=>satz.forEach((m,ai)=>{
+    m.count=Math.min(zaehler[pi][ai],TRUPPEN_PLATZ);
+    m.instanceMatrix.needsUpdate=true;
+  }));
+  /* Die Schattenkarte wird sonst nur einmal beim Aufbau gerechnet – die
+     Figuren kamen erst danach und warfen deshalb keinen Schatten. Genau der
+     setzt sie aber auf die Flaeche, statt sie darueber schweben zu lassen.
+     Einmal pro Zustandsaenderung ist billig; pro Bild waere es Verschwendung. */
+  if(rend)rend.shadowMap.needsUpdate=true;
+}
+
 /* ---------- Kuestenlinie anrauhen ----------
    Der Umriss aus der SVG ist eine gezeichnete Kurve: von oben betrachtet
    messerscharf und ueberall gleich glatt. Die Hoehenverformung hilft nur von
@@ -1345,6 +1441,7 @@ function build(){
    die Spielerfarbe weg und man sah nicht mehr, wem es gehoert. Jetzt bleibt
    die Farbe stehen, das Land glimmt nur und bekommt eine helle Kante. */
 function recolor(){
+  truppenAktualisieren();
   for(const id in meshes){
     const grund=colorHex(id);
     const istSel=sel===id,istZiel=isTarget(id),istHover=hover===id;
@@ -1409,7 +1506,10 @@ function drawLabels(){
     const q=mapPt(c.x,c.y);
     /* Die Beschriftung muss mit der Oberseite mitwandern, sonst sinkt sie
        dort ins Land, wo die Verformung die Platte anhebt. */
-    const s=toScreen(new THREE.Vector3(q[0],DECKEL+0.35+hoehenSpiel(q[0],-q[1]),-q[1]));
+    /* Hoch genug, dass die Plakette ueber den Figuren schwebt statt sie zu
+       verdecken – vorher sass sie genau auf der Landesmitte, wo auch die
+       Truppen stehen, und man sah von ihnen nichts. */
+    const s=toScreen(new THREE.Vector3(q[0],DECKEL+1.25+hoehenSpiel(q[0],-q[1]),-q[1]));
     if(s[2]>1)return;
     if(s[0]<-60||s[0]>labW+60||s[1]<-40||s[1]>labH+40)return;
     eintraege.push({id,x:s[0],y:s[1]+3*k,z:s[2]});
@@ -1423,7 +1523,7 @@ function drawLabels(){
 
   // 2. Truppenzahlen zuerst und immer – sie sind spielentscheidend und
   //    duerfen nie einem Namen weichen.
-  const r=11*k;
+  const r=9.5*k;
   eintraege.forEach(e=>{
     const o=G.owner[e.id],n=G.armies[e.id];
     lctx.beginPath();lctx.arc(e.x,e.y,r,0,6.3);
@@ -1433,7 +1533,7 @@ function drawLabels(){
     lctx.shadowColor="transparent";lctx.shadowBlur=0;lctx.shadowOffsetY=0;
     lctx.lineWidth=2.6*k;
     lctx.strokeStyle=o===NONE?"#9aa7bd":G.players[o].color;lctx.stroke();
-    lctx.fillStyle="#fff";lctx.font="700 "+(12*k).toFixed(1)+"px system-ui,sans-serif";
+    lctx.fillStyle="#fff";lctx.font="700 "+(11*k).toFixed(1)+"px system-ui,sans-serif";
     lctx.fillText(n>0?n:"–",e.x,e.y+0.5*k);
     merken(e.x,e.y,r*2+3,r*2+3);
   });
