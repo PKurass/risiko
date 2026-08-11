@@ -767,16 +767,17 @@ function klippenUv(geo,unten){
 }
 
 /* ---------- Truppen als Figuren ----------
-   Statt einer Zahl in einem Kreis stehen die Truppen als Figuren auf dem
-   Land. Aufgeteilt wird wie bei den Spielsteinen im Karton: Zehner, Fuenfer,
-   Einer. 23 Truppen sind also zwei grosse, keine mittlere und drei kleine
-   Figuren – fuenf Steine statt dreiundzwanzig.
+   Statt einer Zahl in einem Kreis liegen die Truppen als Steine auf dem
+   Land. Aufgeteilt wird wie im Karton: Zehner, Fuenfer, Einer. 23 Truppen
+   sind also zwei Zehner, keine Fuenfer und drei Einer – fuenf Steine statt
+   dreiundzwanzig.
 
    Gezeichnet wird mit InstancedMesh: EIN Aufruf an die Grafikkarte je
    Spieler und Groesse statt einer je Figur. Ohne das waeren es schnell
    zweihundert Einzelobjekte, und das Drehen der Karte wuerde ruckeln.
    Die Zahl bleibt trotzdem stehen – wer angreift, muss sie genau kennen. */
-const TRUPPE_MASS=2.6;          // Gesamtgroesse der Figuren
+const TRUPPE_MASS=1.9;          // Gesamtmassstab der Figuren
+const TRUPPE_ABSTAND=2.3;       // wie weit die Standplaetze auseinanderliegen
 const TRUPPEN_PLATZ=280;        // Figuren je Spieler und Groesse, grosszuegig
 const STAFFEL=[{wert:10,art:2},{wert:5,art:1},{wert:1,art:0}];
 /* Feste Standplaetze rund um die Landesmitte, von innen nach aussen. Die
@@ -785,16 +786,45 @@ const PLAETZE=[[0,0],[0.52,0.30],[-0.52,0.30],[0.52,-0.30],[-0.52,-0.30],
                [0,0.62],[0,-0.62],[1.04,0],[-1.04,0],[0.52,0.90],[-0.52,0.90]];
 let truppenGruppe=null,truppenMeshes=null,truppenFarben=null;
 
+/* Die Steine der 83er Ausgabe: flache Sternprismen, und die Zackenzahl sagt
+   den Wert. Drei Zacken sind eine Truppe, vier sind fuenf, fuenf sind zehn.
+   Auf den Vorlagenfotos liegt neben jedem Stern derselbe Stein auf der
+   Seite – was dort wie ein Quader mit Rille aussieht, ist die Seitenansicht
+   des Prismas.
+
+   Die Kontur kommt aus einer Polarformel statt aus von Hand gesetzten
+   Punkten. Damit haengen alle drei Steine an denselben zwei Reglern:
+   `taille` sagt, wie tief die Flanke zwischen zwei Zacken einschneidet,
+   `schaerfe`, wie schlank die Arme auslaufen. Ein Wert mehr oder weniger
+   an Zacken aendert sonst nichts. */
+function sternForm(zacken,R,taille,schaerfe){
+  const THREE=window.THREE;
+  const s=new THREE.Shape();
+  const N=zacken*30;
+  for(let i=0;i<=N;i++){
+    const w=i/N*Math.PI*2-Math.PI/2;
+    const r=R*(taille+(1-taille)*Math.pow(Math.abs(Math.cos(zacken*w/2)),schaerfe));
+    const x=Math.cos(w)*r,y=Math.sin(w)*r;
+    if(i===0)s.moveTo(x,y);else s.lineTo(x,y);
+  }
+  return s;
+}
 function truppenGeometrien(){
   const THREE=window.THREE;
   const m=TRUPPE_MASS;
-  /* Wenige Seiten, absichtlich: die Kanten passen zum Cel-Shading, und aus
-     der Spielentfernung sieht man ohnehin nur die Silhouette. */
-  const klein=new THREE.CylinderGeometry(0.05*m,0.20*m,0.46*m,6);
-  const mittel=new THREE.CylinderGeometry(0.13*m,0.26*m,0.62*m,6);
-  const gross=new THREE.CylinderGeometry(0.24*m,0.30*m,0.78*m,6);
-  [klein,mittel,gross].forEach((g,i)=>g.translate(0,[0.23,0.31,0.39][i]*m,0));
-  return[klein,mittel,gross];
+  /* Radius, Dicke und Zackenzahl je Wert. Der Zehner ist merklich groesser
+     als der Einer – auch das stammt von den Fotos. */
+  const bau=[{zacken:3,r:0.62,d:0.38},{zacken:4,r:0.72,d:0.43},{zacken:5,r:0.82,d:0.48}];
+  return bau.map(b=>{
+    const geo=new THREE.ExtrudeGeometry(sternForm(b.zacken,b.r*m,0.24,2.4),{
+      depth:b.d*m,bevelEnabled:true,
+      /* Schmale Fase: die Steine sind gespritzter Kunststoff, keine
+         scharfkantigen Bloecke. Sie faengt zugleich das Licht und macht die
+         Zacken von oben ueberhaupt erst lesbar. */
+      bevelThickness:0.045*m,bevelSize:0.045*m,bevelSegments:1});
+    geo.rotateX(-Math.PI/2);      // flach hinlegen, Sternflaeche nach oben
+    return geo;
+  });
 }
 function truppenAufbauen(spieler){
   const THREE=window.THREE;
@@ -806,10 +836,12 @@ function truppenAufbauen(spieler){
   truppenFarben=spieler.map(p=>p.color);
   spieler.forEach((p,pi)=>{
     truppenMeshes.push(geos.map(g=>{
-      /* Deutlich dunkler als das Land, auf dem sie stehen. In der
-         Besitzer-Ansicht hat die Flaeche ja genau die Spielerfarbe – ein
-         Stein in derselben Farbe verschwindet darauf spurlos. */
-      const farbe=new THREE.Color(p.color).multiplyScalar(0.48);
+      /* Etwas dunkler als das Land, auf dem sie liegen. In der
+         Besitzer-Ansicht hat die Flaeche genau die Spielerfarbe – ein Stein
+         in derselben Farbe verschwindet darauf spurlos. Zu dunkel darf er
+         aber auch nicht sein, sonst wirkt er wie ein Fleck statt wie
+         gespritzter Kunststoff; den Rest der Trennung macht der Schatten. */
+      const farbe=new THREE.Color(p.color).multiplyScalar(0.72);
       const mat=new THREE.MeshToonMaterial({color:farbe,gradientMap:stufen});
       const m=new THREE.InstancedMesh(g,mat,TRUPPEN_PLATZ);
       m.castShadow=true;m.count=0;
@@ -840,7 +872,7 @@ function truppenAktualisieren(){
       let k=Math.floor(rest/st.wert);rest-=k*st.wert;
       while(k-->0&&platz<PLAETZE.length){
         const [dx,dz]=PLAETZE[platz++];
-        const x=q[0]+dx*TRUPPE_MASS*0.55,z=-q[1]+dz*TRUPPE_MASS*0.55;
+        const x=q[0]+dx*TRUPPE_ABSTAND,z=-q[1]+dz*TRUPPE_ABSTAND;
         pos.set(x,DECKEL+MALEREI_HOEHE+0.02+hoehenSpiel(x,z),z);
         /* Jede Figur ein wenig anders gedreht – exakt ausgerichtete Steine
            sehen aus wie hingerechnet, nicht wie hingestellt. */

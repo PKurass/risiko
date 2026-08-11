@@ -564,6 +564,35 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
   pro Zug wäre ein Pflichtklick eine Zumutung; wer schneller ist, klickt
   trotzdem – auf den Knopf oder irgendwohin ins Fenster.
 
+### 6.2c Spielsteine
+
+- **Form:** `sternForm(zacken, R, taille, schaerfe)` erzeugt die Kontur über
+  eine Polarformel `r(θ) = R·(taille + (1−taille)·|cos(zacken·θ/2)|^schaerfe)`.
+  Vorlage sind die Steine der 83er Ausgabe: flache Prismen, Zackenzahl gleich
+  Wert (3 → 1, 4 → 5, 5 → 10). Auf den Fotos liegt neben jedem Stern derselbe
+  Stein auf der Seite; was dort wie ein Quader mit Rille aussieht, ist die
+  Seitenansicht des Prismas.
+- **Zeichnen:** `InstancedMesh` je Spieler und Wert (3 Werte × bis zu 6
+  Spieler = höchstens 18 Aufrufe). Einzelne Meshes wären schnell zweihundert
+  Objekte, und das Drehen der Karte würde ruckeln.
+- **Vier Fallen**, alle mit demselben Symptom (*man sieht nichts*), deshalb
+  einzeln zu finden:
+  1. Die Zahlenplakette saß genau auf der Landesmitte – also dort, wo die
+     Steine liegen – und verdeckte sie vollständig. Der Ankerpunkt liegt jetzt
+     bei `DECKEL+1.25`, die Plakette schwebt darüber.
+  2. Die Steine waren bei normalem Zoom rund **drei Bildpunkte** groß. Der
+     Maßstab `TRUPPE_MASS` ist kein Detail, sondern entscheidet, ob überhaupt
+     etwas zu sehen ist.
+  3. Sie hatten die Spielerfarbe – und liegen auf einer Fläche, die seit
+     `BESITZ_ANTEIL = 1` genau dieselbe Farbe hat. Darauf verschwanden sie
+     spurlos. Jetzt auf 72 % abgedunkelt; den Rest der Trennung macht der
+     Schatten.
+  4. Die Schattenkarte ist eingefroren (`shadowMap.autoUpdate = false`) und
+     kannte die Steine nicht, die erst nach dem Aufbau entstehen. Ohne
+     Schatten schweben sie über der Fläche, statt darauf zu liegen –
+     `truppenAktualisieren()` setzt deshalb `needsUpdate` bei jeder
+     Zustandsänderung. Pro Bild wäre es Verschwendung, pro Zug ist es billig.
+
 ### 6.3 Steuerung (aktuell)
 
 - **Linke Maustaste ziehen** = drehen; **einfacher Linksklick** = Land wählen.

@@ -179,6 +179,22 @@ ineinander. Ebenfalls nicht eingecheckt.
 `Risk.svg` liegt mit im Repo. Zum Spielen wird sie nicht gebraucht, nur zum
 Backen – aber nur so bleibt die Karte reproduzierbar.
 
+## Spielsteine
+
+Die Truppen liegen als Steine auf dem Land, nachgebildet nach der Ausgabe von
+1983: **flache Sternprismen, und die Zackenzahl sagt den Wert** – drei Zacken
+sind eine Truppe, vier sind fünf, fünf sind zehn. 23 Truppen sind also zwei
+Zehner und drei Einer, fünf Steine statt dreiundzwanzig.
+
+Die Kontur kommt aus einer Polarformel statt aus von Hand gesetzten Punkten;
+alle drei Steine hängen deshalb an denselben zwei Reglern (`taille` für die
+Tiefe der Flanke, `schaerfe` für die Schlankheit der Arme). Gezeichnet wird
+mit `InstancedMesh`: ein Aufruf an die Grafikkarte je Spieler und Wert statt
+einer je Stein.
+
+Die Truppenzahl bleibt als Plakette darüber stehen – wer angreift, muss sie
+genau kennen, und ab zehn Steinen zählt niemand mehr nach.
+
 ## Spielerfarben
 
 Im Startmenü hat jeder Spieler eine Farbpalette unter dem Namensfeld. Die
