@@ -179,6 +179,17 @@ ineinander. Ebenfalls nicht eingecheckt.
 `Risk.svg` liegt mit im Repo. Zum Spielen wird sie nicht gebraucht, nur zum
 Backen – aber nur so bleibt die Karte reproduzierbar.
 
+## Spielerfarben
+
+Im Startmenü hat jeder Spieler eine Farbpalette unter dem Namensfeld. Die
+gewählte Farbe trägt einen hellen Ring; auf den Farben, die schon jemand
+anderem gehören, steht dessen Nummer. Ein Klick darauf **tauscht** mit ihm –
+kürzer erklärt als jede Sperre, und niemand bleibt ohne Farbe zurück.
+
+Zehn Farben stehen zur Wahl, sechs davon sind die Voreinstellung. Alle sind
+auf der eingefärbten Karte deutlich auseinanderzuhalten (kein zweites Rot,
+kein zweites Blau).
+
 ## Hausregeln
 
 Im Startmenü einzeln abschaltbar:

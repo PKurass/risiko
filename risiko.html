@@ -48,6 +48,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .bignum{font-size:34px;font-weight:800;min-width:56px;text-align:center}
 .setup-grid{display:flex;flex-direction:column;gap:10px}
 .setup-grid label{font-size:13px;color:#8a97b3}
+.palette{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+.farbtupfen{width:24px;height:24px;padding:0;border-radius:7px;flex:none;
+  border:2px solid transparent;font-size:11px;font-weight:800;color:rgba(0,0,0,.5)}
+.farbtupfen.gewaehlt{border-color:#e8eefc;box-shadow:0 0 0 2px rgba(232,238,252,.25)}
 input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #35456b;background:#0f1420;color:#e8eefc}
 .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:#c3cee6;margin-top:8px}
 .dice{display:inline-flex;gap:4px;margin-left:6px;vertical-align:-5px}
@@ -240,7 +244,14 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 <script>
 /* ===================== TEIL 3 — OBERFLÄCHE ===================== */
 const E=RiskEngine,TERR=E.TERR,ADJ=E.ADJ,NONE=E.NONE,M=SvgMap;
-const PC=["#ff5470","#4da3ff","#37d67a","#ffd166","#b980ff","#ff9f43"];
+/* Die ersten sechs sind zugleich die Voreinstellung: Spieler 1 bekommt die
+   erste Farbe, Spieler 2 die zweite und so weiter. Dahinter stehen vier
+   weitere zur Auswahl, damit auch bei sechs Mitspielern noch etwas uebrig
+   bleibt, wenn jemand tauschen will. Alle zehn sind auf der eingefaerbten
+   Karte deutlich auseinanderzuhalten – deshalb kein zweites Rot und kein
+   zweites Blau. */
+const PC=["#ff5470","#4da3ff","#37d67a","#ffd166","#b980ff","#ff9f43",
+          "#25d0c4","#f06fc0","#a3c94a","#c98b5e"];
 const SYM={inf:"I",kav:"K",art:"A",wild:"★"};
 const KEY="risiko.save.v3";
 const $=id=>document.getElementById(id);
@@ -411,16 +422,50 @@ $("resumeBtn").onclick=()=>{const s=loadSave();if(!s)return;
   $("setupOverlay").classList.remove("show");render();};
 
 let names=["Spieler 1","Spieler 2","Spieler 3"];
+let farben=[PC[0],PC[1],PC[2]];
+/* Jede Farbe gehoert genau einem Spieler. Wer eine schon vergebene waehlt,
+   tauscht sie mit dem bisherigen Besitzer – das ist kuerzer erklaert als
+   jede Sperre und laesst nie einen Spieler ohne Farbe zurueck. */
+function waehleFarbe(i,f){
+  const j=farben.indexOf(f);
+  if(j===i)return;
+  if(j>=0)farben[j]=farben[i];
+  farben[i]=f;
+  renderSetup();
+}
 function renderSetup(){const box=$("setupPlayers");box.innerHTML="";
-  names.forEach((nm,i)=>{const w=document.createElement("div");
-    w.innerHTML='<label><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:'+PC[i]+';margin-right:6px"></span>Spieler '+(i+1)+'</label>';
+  names.forEach((nm,i)=>{
+    const w=document.createElement("div");
+    const lab=document.createElement("label");
+    lab.textContent="Spieler "+(i+1);
+    w.appendChild(lab);
     const inp=document.createElement("input");inp.type="text";inp.value=nm;
-    inp.oninput=e=>names[i]=e.target.value;w.appendChild(inp);box.appendChild(w);});}
-$("addPlayer").onclick=()=>{if(names.length<6){names.push("Spieler "+(names.length+1));renderSetup();}};
-$("remPlayer").onclick=()=>{if(names.length>2){names.pop();renderSetup();}};
+    inp.oninput=e=>names[i]=e.target.value;w.appendChild(inp);
+    const pal=document.createElement("div");pal.className="palette";
+    PC.forEach(f=>{
+      const b=document.createElement("button");
+      b.className="farbtupfen"+(farben[i]===f?" gewaehlt":"");
+      b.style.background=f;
+      b.title=farben.indexOf(f)>=0&&farben[i]!==f
+        ? "Farbe von Spieler "+(farben.indexOf(f)+1)+" – tauscht mit ihm"
+        : "Diese Farbe waehlen";
+      /* Wer die Farbe gerade hat, steht als Ziffer darauf: so sieht man
+         auf einen Blick, mit wem ein Klick tauschen wuerde. */
+      const bes=farben.indexOf(f);
+      if(bes>=0&&bes!==i)b.textContent=bes+1;
+      b.onclick=()=>waehleFarbe(i,f);
+      pal.appendChild(b);
+    });
+    w.appendChild(pal);
+    box.appendChild(w);});}
+$("addPlayer").onclick=()=>{if(names.length<6){
+  names.push("Spieler "+(names.length+1));
+  farben.push(PC.find(f=>farben.indexOf(f)<0));
+  renderSetup();}};
+$("remPlayer").onclick=()=>{if(names.length>2){names.pop();farben.pop();renderSetup();}};
 renderSetup();showResume();
 $("startBtn").onclick=()=>{
-  const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:PC[i]}));
+  const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:farben[i]||PC[i]}));
   G=E.createGame(pl,{cap3:$("optCap3").checked,cards:$("optCards").checked,
     draft:$("optDraft").checked,dice:$("optDice").checked},
     (Date.now()^(Math.random()*1e9))>>>0);
