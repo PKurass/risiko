@@ -662,7 +662,7 @@ function gemalteTextur(){
 /* Graufassung derselben Malerei: nur noch Pinselstrich und Licht, keine
    Farbe. Ueber die Spielerfarbe gelegt bleibt die gemalte Anmutung, und
    die Farbe sagt trotzdem, wem das Land gehoert.
-   Die Grauwerte werden dabei in ein helles Band gehoben (142-255).
+   Die Grauwerte werden dabei in ein helles Band gehoben (124-255).
    Grund: eine Textur kann nur abdunkeln, nie aufhellen – bei vollem Umfang
    saeuft jede Spielerfarbe zu Dunkelgrau ab. */
 function entfaerben(c,bild){
@@ -678,7 +678,7 @@ function entfaerben(c,bild){
   const spanne=Math.max(1,hi-lo);
   for(let i=0;i<p.length;i+=4){
     const l=p[i]*0.299+p[i+1]*0.587+p[i+2]*0.114;
-    const v=Math.max(0,Math.min(255,Math.round(142+113*((l-lo)/spanne))));
+    const v=Math.max(0,Math.min(255,Math.round(124+131*((l-lo)/spanne))));
     p[i]=p[i+1]=p[i+2]=v;
   }
   g.putImageData(d,0,0);
@@ -739,15 +739,82 @@ function hoehenSpiel(x,z){return (rauschen(x,z)-0.5)*HOEHEN_SPIEL;}
    wenn die Klippe nebenan doppelt so hoch ist. u wird nur gestaucht; die
    Richtungswahl der Vorlage (laengs der Wand statt quer) bleibt erhalten. */
 function klippenUv(geo,unten){
+  const THREE=window.THREE;
   const p=geo.attributes.position,uv=geo.attributes.uv;
+  /* Zusaetzlich eine Farbe pro Eckpunkt. Ohne sie ist die ganze Wand
+     derselbe Braunton und liest sich aus der Naehe wie Pappe: eine
+     Boeschung hat feuchte und trockene Stellen, Schatten in den Mulden,
+     ausgeblichene Kanten. Genau das traegt die Streuung nach – multiplikativ
+     um 1 herum, damit sie die Farbe nicht verschiebt, sondern nur belebt. */
+  const farbe=new Float32Array(p.count*3).fill(1);
   for(const grp of geo.groups){
     if(grp.materialIndex!==1)continue;      // 1 = Seitenwaende
     for(let i=grp.start;i<grp.start+grp.count;i++){
-      const y=p.getY(i),oben=DECKEL+hoehenSpiel(p.getX(i),p.getZ(i));
-      uv.setXY(i,uv.getX(i)*KLIPPE_U,Math.max(0,Math.min(1,(y-unten)/Math.max(0.2,oben-unten))));
+      const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+      const oben=DECKEL+hoehenSpiel(x,z);
+      const v=Math.max(0,Math.min(1,(y-unten)/Math.max(0.2,oben-unten)));
+      uv.setXY(i,uv.getX(i)*KLIPPE_U,v);
+      /* Grobe Flecken laengs der Wand, dazu ein Hauch mehr Licht nach oben:
+         unten steht die Wand im eigenen Schatten. */
+      const fl=0.76+0.32*rauschLage(x*1.7,z*1.7,2.6);
+      const hoch=0.90+0.12*v;
+      const f=Math.min(1,fl*hoch);
+      farbe[i*3]=farbe[i*3+1]=farbe[i*3+2]=f;
     }
   }
+  geo.setAttribute("color",new THREE.BufferAttribute(farbe,3));
   uv.needsUpdate=true;
+}
+
+/* ---------- Kuestenlinie anrauhen ----------
+   Der Umriss aus der SVG ist eine gezeichnete Kurve: von oben betrachtet
+   messerscharf und ueberall gleich glatt. Die Hoehenverformung hilft nur von
+   der Seite. Hier bekommt die Kueste kleine Buchten und Nasen.
+
+   Zwei Bedingungen machen das heikel:
+
+   1. Nur an der KUESTE. Eine Binnengrenze mitzuverschieben wuerde beide
+      Nachbarn auseinanderziehen – dazwischen klaffte ein Spalt. Deshalb
+      wird punktweise geprueft und der Uebergang ueber mehrere Punkte weich
+      ausgeblendet, sonst gaebe es an der Nahtstelle einen Knick.
+   2. Nur nach INNEN. Nach aussen wuerde die Platte ueber die gemalte Karte
+      hinauswachsen, und an der Kante erschiene ein Streifen blanker
+      Plattenfarbe. Eine Kueste, die nur nagt, bleibt immer im Bild. */
+const KUESTE_TIEFE=4.5;         // groesste Einbuchtung in Kartenpunkten
+function kuesteVerformen(loop,id,reg){
+  if(!KUESTE_TIEFE||!reg)return loop;
+  const n=loop.length;
+  if(n<8)return loop;
+  let flaeche=0;
+  for(let i=0,j=n-1;i<n;j=i++) flaeche+=loop[j][0]*loop[i][1]-loop[i][0]*loop[j][1];
+  const vz=flaeche>0?1:-1;
+  const kanteN=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1;
+    return[vz*dy/L,-vz*dx/L];};
+
+  const norm=[],meer=[];
+  for(let i=0;i<n;i++){
+    const p=loop[i],vor=loop[(i+1)%n],zur=loop[(i-1+n)%n];
+    const a=kanteN(zur,p),b=kanteN(p,vor);
+    let nx=a[0]+b[0],ny=a[1]+b[1];const L=Math.hypot(nx,ny)||1;
+    norm.push([nx/L,ny/L]);
+    meer.push(trifftLand(p[0]+nx/L*4,p[1]+ny/L*4,id,reg)?0:1);
+  }
+  /* Weicher Uebergang: ueber sieben Punkte mitteln. Ohne das saesse an der
+     Stelle, wo eine Binnengrenze auf die Kueste trifft, eine Ecke. */
+  const weich=[];
+  for(let i=0;i<n;i++){
+    let s=0;
+    for(let k=-3;k<=3;k++)s+=meer[(i+k+n*4)%n];
+    weich.push(s/7);
+  }
+  return loop.map((p,i)=>{
+    /* Zwei Wellenlaengen uebereinander: mit nur einer bekaeme die Kueste ein
+       regelmaessiges Wellenmuster – genau die Gleichmaessigkeit, die hier weg
+       soll. Die kurze Lage bricht die lange auf. */
+    const t=0.6*rauschLage(p[0]*0.09,p[1]*0.09,1.9)+0.4*rauschLage(p[0]*0.26,p[1]*0.26,1.3);
+    const tief=KUESTE_TIEFE*t*weich[i];
+    return[p[0]-norm[i][0]*tief,p[1]-norm[i][1]*tief];
+  });
 }
 
 /* Dieselbe Verformung auf eine fertige Geometrie anwenden. `abGrenze` haelt
@@ -1180,15 +1247,21 @@ function build(){
   const matSaum=new THREE.MeshBasicMaterial({map:kantenSchatten(),transparent:true,
     depthWrite:false,side:THREE.DoubleSide});
   const stufenLand=toonStufen([104,148,186,214]);
-  const stufenKlippe=toonStufen([68,124,182]);
+  /* Mehr Stufen als vorher: drei Helligkeiten liessen die Wand als eine
+     einzige Flaeche erscheinen. */
+  const stufenKlippe=toonStufen([48,84,118,150,178]);
   const reg=polygonRegister();
   const teileSchaum=[],teileSaum=[];
   const texLand=landTextur(),texKlippe=klippenTextur(),texMalerei=gemalteTextur();
   const polys=M.polys;
   for(const id in polys){
     const gmesh=new THREE.Group();gmesh.userData.id=id;
-    polys[id].forEach(loop=>{
-      if(loop.length<4)return;
+    polys[id].forEach(rohLoop=>{
+      if(rohLoop.length<4)return;
+      /* Ab hier gilt nur noch der angerauhte Umriss – Platte, Malerei,
+         Grenzlinie, Schaum und Saum muessen denselben benutzen, sonst
+         laufen sie auseinander. */
+      const loop=kuesteVerformen(rohLoop,id,reg);
       const shape=new THREE.Shape();
       loop.forEach((p,i)=>{const q=mapPt(p[0],p[1]);
         if(i===0)shape.moveTo(q[0],q[1]);else shape.lineTo(q[0],q[1]);});
@@ -1204,8 +1277,8 @@ function build(){
       klippenUv(geo,-FASE_DICKE);
       const top=new THREE.MeshToonMaterial({color:colorHex(id),map:texLand,
         gradientMap:stufenLand,side:THREE.DoubleSide});
-      const side=new THREE.MeshToonMaterial({color:0x9c7c5c,map:texKlippe,
-        gradientMap:stufenKlippe,side:THREE.DoubleSide});
+      const side=new THREE.MeshToonMaterial({color:0x8d6e4e,map:texKlippe,
+        gradientMap:stufenKlippe,vertexColors:true,side:THREE.DoubleSide});
       const mesh=new THREE.Mesh(geo,[top,side]);
       mesh.castShadow=true;mesh.receiveShadow=true;
       mesh.userData.id=id;gmesh.add(mesh);
