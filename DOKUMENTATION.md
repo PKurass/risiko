@@ -566,12 +566,33 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 
 ### 6.2c Spielsteine
 
-- **Form:** `sternForm(zacken, R, taille, schaerfe)` erzeugt die Kontur über
-  eine Polarformel `r(θ) = R·(taille + (1−taille)·|cos(zacken·θ/2)|^schaerfe)`.
-  Vorlage sind die Steine der 83er Ausgabe: flache Prismen, Zackenzahl gleich
-  Wert (3 → 1, 4 → 5, 5 → 10). Auf den Fotos liegt neben jedem Stern derselbe
-  Stein auf der Seite; was dort wie ein Quader mit Rille aussieht, ist die
-  Seitenansicht des Prismas.
+- **Form:** `sternForm(zacken, R, armBreite, kehle)`. Vorlage sind die Steine
+  der 83er Ausgabe: flache Prismen, Zackenzahl gleich Wert (3 → 1, 4 → 5,
+  5 → 10). Auf den Fotos liegt neben jedem Stern derselbe Stein auf der
+  Seite; was dort wie ein Quader mit Rille aussieht, ist die Seitenansicht
+  des Prismas.
+  **Zwei Sackgassen, bevor die Form saß** – beide lehrreich:
+  1. Eine Polarformel `r(θ) = R·(taille + (1−taille)·|cos(zacken·θ/2)|^p)`
+     wölbt die Arme nach *außen*. Ergebnis: eine Blume.
+  2. Ein Kreisbogen, der durch zwei benachbarte Spitzen läuft, hat
+     zwangsläufig einen sehr großen Radius (beim Dreier fast das Doppelte des
+     Steins) und ist deshalb über die ganze Länge fast gerade. Ergebnis: ein
+     spitzes Dreieck.
+  Richtig ist die umgekehrte Denkweise: jeder Arm ist ein Balken mit runder
+  Kappe, dazwischen sitzt eine **Hohlkehle** mit kleinem Radius – die ist
+  kräftig gekrümmt, und das ist der Schwung der Vorlage. Der Abstand der
+  Kehlenmitte vom Zentrum folgt aus der Tangentenbedingung an beide
+  Armflanken: `d = (kehle + armBreite/2) / sin(π/n)`.
+- **Plätze:** `streuPunkte(id)` würfelt je Land einmal Standplätze aus und
+  merkt sie. Sie müssen einen halben Steindurchmesser vom Rand entfernt
+  liegen (sechs Proberichtungen), sonst hängt ein Stein über der Klippe;
+  winzige Länder wie Island bekommen ersatzweise die Landesmitte. Der
+  Startwert kommt aus dem Landesnamen — sonst sprängen die Steine bei jeder
+  Zustandsänderung umher und täuschten Bewegung vor.
+- **Rand:** dieselbe Geometrie, in der Fläche 1,26-fach, nur `BackSide`
+  gezeichnet. Ein fester Farbauf- oder -abschlag gegenüber dem Untergrund
+  reicht nicht: die Fläche hat in der Besitzer-Ansicht genau die
+  Spielerfarbe, und die ist mal hell (Gelb) mal dunkel (Violett).
 - **Zeichnen:** `InstancedMesh` je Spieler und Wert (3 Werte × bis zu 6
   Spieler = höchstens 18 Aufrufe). Einzelne Meshes wären schnell zweihundert
   Objekte, und das Drehen der Karte würde ruckeln.

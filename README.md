@@ -186,14 +186,26 @@ Die Truppen liegen als Steine auf dem Land, nachgebildet nach der Ausgabe von
 sind eine Truppe, vier sind fünf, fünf sind zehn. 23 Truppen sind also zwei
 Zehner und drei Einer, fünf Steine statt dreiundzwanzig.
 
-Die Kontur kommt aus einer Polarformel statt aus von Hand gesetzten Punkten;
-alle drei Steine hängen deshalb an denselben zwei Reglern (`taille` für die
-Tiefe der Flanke, `schaerfe` für die Schlankheit der Arme). Gezeichnet wird
-mit `InstancedMesh`: ein Aufruf an die Grafikkarte je Spieler und Wert statt
-einer je Stein.
+Die Form ist nicht „Kreis mit Kerben", sondern **runde Arme mit einer
+Hohlkehle dazwischen**: jeder Arm ist ein Balken der Breite `armBreite` mit
+runder Kappe, und wo zwei Arme zusammentreffen, sitzt eine Hohlkehle vom
+Radius `kehle`. Die Armflanken sind die Tangenten dazwischen und ergeben sich
+von selbst. Alle drei Steine hängen an denselben beiden Reglern.
+
+Die Steine liegen an Plätzen, die je Land einmal ausgewürfelt und gemerkt
+werden – verstreut, aber weit genug vom Rand, damit keiner über der Klippe
+hängt. Der Startwert kommt aus dem Landesnamen, damit dieselbe Streuung in
+jedem Spiel wieder herauskommt; hüpfende Steine bei jedem Zug würden Bewegung
+vortäuschen, wo keine ist.
+
+Gezeichnet wird mit `InstancedMesh`: ein Aufruf an die Grafikkarte je Spieler
+und Wert statt einer je Stein. Dazu ein dunkler Rand aus derselben Form,
+etwas breiter und nur mit den Rückseiten gezeichnet – ein fester Farbauf- oder
+-abschlag reicht nicht, weil die Fläche darunter je nach Spieler mal hell und
+mal dunkel ist.
 
 Die Truppenzahl bleibt als Plakette darüber stehen – wer angreift, muss sie
-genau kennen, und ab zehn Steinen zählt niemand mehr nach.
+genau kennen, und ab zwölf Steinen zählt niemand mehr nach.
 
 ## Spielerfarben
 

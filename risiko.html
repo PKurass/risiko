@@ -776,14 +776,58 @@ function klippenUv(geo,unten){
    Spieler und Groesse statt einer je Figur. Ohne das waeren es schnell
    zweihundert Einzelobjekte, und das Drehen der Karte wuerde ruckeln.
    Die Zahl bleibt trotzdem stehen – wer angreift, muss sie genau kennen. */
-const TRUPPE_MASS=1.9;          // Gesamtmassstab der Figuren
-const TRUPPE_ABSTAND=2.3;       // wie weit die Standplaetze auseinanderliegen
+const TRUPPE_MASS=1.45;         // Gesamtmassstab der Figuren
 const TRUPPEN_PLATZ=280;        // Figuren je Spieler und Groesse, grosszuegig
 const STAFFEL=[{wert:10,art:2},{wert:5,art:1},{wert:1,art:0}];
-/* Feste Standplaetze rund um die Landesmitte, von innen nach aussen. Die
-   grossen Figuren kommen zuerst und stehen deshalb in der Mitte. */
-const PLAETZE=[[0,0],[0.52,0.30],[-0.52,0.30],[0.52,-0.30],[-0.52,-0.30],
-               [0,0.62],[0,-0.62],[1.04,0],[-1.04,0],[0.52,0.90],[-0.52,0.90]];
+/* Wieviele Steine ein Land hoechstens zeigt. Darueber sagt nur noch die
+   Plakette die genaue Zahl – ab einem Dutzend zaehlt ohnehin niemand nach. */
+const STEINE_MAX=12;
+/* Standplaetze werden je Land einmal ausgewuerfelt und gemerkt. Eine feste
+   Rosette um die Landesmitte sah aus wie aufgereiht; verstreut liegen sie
+   wie hingelegt. Der Startwert kommt aus dem Landesnamen, damit dieselbe
+   Streuung bei jedem Aufruf und in jedem Spiel wieder herauskommt – huepfende
+   Steine bei jedem Zug waeren unruhig und wuerden Bewegung vortaeuschen,
+   wo keine ist. */
+const streuCache={};
+function ringFlaeche(r){
+  let a=0;for(let i=0,j=r.length-1;i<r.length;j=i++)a+=r[j][0]*r[i][1]-r[i][0]*r[j][1];
+  return Math.abs(a)/2;
+}
+function streuPunkte(id){
+  if(streuCache[id])return streuCache[id];
+  const ringe=M.polys[id]||[];
+  let gross=null,groesse=0;
+  for(const r of ringe){const a=ringFlaeche(r);if(a>groesse){groesse=a;gross=r;}}
+  const pts=[];
+  if(gross){
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    gross.forEach(p=>{x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);
+                      x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);});
+    let z=2166136261;
+    for(let i=0;i<id.length;i++)z=((z^id.charCodeAt(i))*16777619)>>>0;
+    const zuf=()=>{z=(z*1103515245+12345)>>>0;return z/4294967296;};
+    /* Halber Steindurchmesser in Kartenpunkten – so weit muss ein Platz vom
+       Rand entfernt liegen, sonst haengt der Stein ueber der Klippe. */
+    const rand=(TRUPPE_MASS*0.82)/S;
+    const abstand=rand*1.7;
+    for(let v=0;v<900&&pts.length<STEINE_MAX;v++){
+      const x=x0+zuf()*(x1-x0),y=y0+zuf()*(y1-y0);
+      if(!imPolygon(x,y,gross))continue;
+      let drin=true;
+      for(let k=0;k<6;k++){
+        const w=k/6*6.283;
+        if(!imPolygon(x+Math.cos(w)*rand,y+Math.sin(w)*rand,gross)){drin=false;break;}
+      }
+      if(!drin)continue;
+      if(pts.some(p=>Math.hypot(p[0]-x,p[1]-y)<abstand))continue;
+      pts.push([x,y]);
+    }
+    /* Winzige Laender wie Island geben keinen Platz her, der weit genug vom
+       Rand liegt. Lieber ein Stein in der Mitte als gar keiner. */
+    if(!pts.length&&M.center[id])pts.push([M.center[id].x,M.center[id].y]);
+  }
+  return streuCache[id]=pts;
+}
 let truppenGruppe=null,truppenMeshes=null,truppenFarben=null;
 
 /* Die Steine der 83er Ausgabe: flache Sternprismen, und die Zackenzahl sagt
@@ -792,21 +836,59 @@ let truppenGruppe=null,truppenMeshes=null,truppenFarben=null;
    Seite – was dort wie ein Quader mit Rille aussieht, ist die Seitenansicht
    des Prismas.
 
-   Die Kontur kommt aus einer Polarformel statt aus von Hand gesetzten
-   Punkten. Damit haengen alle drei Steine an denselben zwei Reglern:
-   `taille` sagt, wie tief die Flanke zwischen zwei Zacken einschneidet,
-   `schaerfe`, wie schlank die Arme auslaufen. Ein Wert mehr oder weniger
-   an Zacken aendert sonst nichts. */
-function sternForm(zacken,R,taille,schaerfe){
+   Die Form ist nicht "Kreis mit Kerben", sondern **runde Arme mit einer
+   Hohlkehle dazwischen**. Der Unterschied ist der springende Punkt:
+
+   Ein Kreisbogen, der durch zwei benachbarte Spitzen laeuft, hat zwangs-
+   laeufig einen sehr grossen Radius – beim Dreier fast das Doppelte des
+   Steins. So ein Bogen ist ueber die ganze Laenge fast gerade, und heraus
+   kommt ein spitzes Dreieck. Genau daran ist der zweite Anlauf gescheitert.
+
+   Deshalb umgekehrt gedacht: jeder Arm ist ein Balken der Breite
+   `armBreite` mit einer runden Kappe am Ende, und wo zwei Arme
+   aufeinandertreffen, sitzt eine Hohlkehle vom Radius `kehle`. Die ist
+   klein und deshalb kraeftig gekruemmt – das ist der Schwung, den die
+   Vorlage hat. Die Armflanken sind die Tangenten dazwischen und ergeben
+   sich von selbst.
+
+   Der Abstand der Kehlenmitte vom Mittelpunkt folgt aus der Bedingung,
+   dass sie beide Armflanken beruehrt:  d = (kehle + armBreite/2) / sin(π/n).
+   Naeher an den Mittelpunkt kommt die Kehle damit auf d − kehle. */
+function sternForm(zacken,R,armBreite,kehle){
   const THREE=window.THREE;
   const s=new THREE.Shape();
-  const N=zacken*30;
-  for(let i=0;i<=N;i++){
-    const w=i/N*Math.PI*2-Math.PI/2;
-    const r=R*(taille+(1-taille)*Math.pow(Math.abs(Math.cos(zacken*w/2)),schaerfe));
-    const x=Math.cos(w)*r,y=Math.sin(w)*r;
-    if(i===0)s.moveTo(x,y);else s.lineTo(x,y);
+  const halb=Math.PI/zacken;            // halber Winkel zwischen zwei Armen
+  const kappe=armBreite/2;              // Radius der runden Armkappe
+  const d=(kehle+kappe)/Math.sin(halb);
+  const punkte=[];
+  for(let i=0;i<zacken;i++){
+    const a=i*2*halb-Math.PI/2;         // Richtung dieses Arms
+    const u=[Math.cos(a),Math.sin(a)],n=[-u[1],u[0]];
+    const kz=[u[0]*(R-kappe),u[1]*(R-kappe)];
+    /* Kappe: halber Kreis um das Armende, von der einen Flanke ueber die
+       Spitze zur anderen. Damit ist die Ecke gerundet statt spitz. */
+    for(let k=0;k<=16;k++){
+      const w=a-Math.PI/2+Math.PI*(k/16);
+      punkte.push([kz[0]+Math.cos(w)*kappe,kz[1]+Math.sin(w)*kappe]);
+    }
+    /* Hohlkehle zum naechsten Arm. Die Geraden dazwischen entstehen von
+       selbst, weil beide Beruehrpunkte auf derselben Flanke liegen. */
+    const b=a+halb;
+    const C=[Math.cos(b)*d,Math.sin(b)*d];
+    const a2=a+2*halb,u2=[Math.cos(a2),Math.sin(a2)],n2=[-u2[1],u2[0]];
+    const T1=[C[0]-kehle*n[0],C[1]-kehle*n[1]];
+    const T2=[C[0]+kehle*n2[0],C[1]+kehle*n2[1]];
+    const w1=Math.atan2(T1[1]-C[1],T1[0]-C[0]);
+    let w2=Math.atan2(T2[1]-C[1],T2[0]-C[0]);
+    while(w2-w1>Math.PI)w2-=2*Math.PI;
+    while(w2-w1<-Math.PI)w2+=2*Math.PI;
+    for(let k=0;k<=14;k++){
+      const w=w1+(w2-w1)*(k/14);
+      punkte.push([C[0]+Math.cos(w)*kehle,C[1]+Math.sin(w)*kehle]);
+    }
   }
+  punkte.forEach((p,i)=>i?s.lineTo(p[0],p[1]):s.moveTo(p[0],p[1]));
+  s.closePath();
   return s;
 }
 function truppenGeometrien(){
@@ -814,9 +896,14 @@ function truppenGeometrien(){
   const m=TRUPPE_MASS;
   /* Radius, Dicke und Zackenzahl je Wert. Der Zehner ist merklich groesser
      als der Einer – auch das stammt von den Fotos. */
-  const bau=[{zacken:3,r:0.62,d:0.38},{zacken:4,r:0.72,d:0.43},{zacken:5,r:0.82,d:0.48}];
+  /* Armbreite und Kehle als Anteil des Radius – so behalten alle drei
+     Steine dieselbe Handschrift, obwohl sie verschieden viele Arme haben. */
+  const bau=[{zacken:3,r:0.62,d:0.38,arm:0.36,kehle:0.48},
+             {zacken:4,r:0.72,d:0.43,arm:0.33,kehle:0.38},
+             {zacken:5,r:0.82,d:0.48,arm:0.30,kehle:0.31}];
   return bau.map(b=>{
-    const geo=new THREE.ExtrudeGeometry(sternForm(b.zacken,b.r*m,0.24,2.4),{
+    const geo=new THREE.ExtrudeGeometry(
+      sternForm(b.zacken,b.r*m,b.arm*b.r*m,b.kehle*b.r*m),{
       depth:b.d*m,bevelEnabled:true,
       /* Schmale Fase: die Steine sind gespritzter Kunststoff, keine
          scharfkantigen Bloecke. Sie faengt zugleich das Licht und macht die
@@ -835,21 +922,30 @@ function truppenAufbauen(spieler){
   truppenMeshes=[];
   truppenFarben=spieler.map(p=>p.color);
   spieler.forEach((p,pi)=>{
+    /* Zwei Lagen je Stein. Ein blosser Farbunterschied zum Untergrund
+       genuegt nicht: die Flaeche hat in der Besitzer-Ansicht GENAU die
+       Spielerfarbe, und je nach Spieler ist sie mal hell (Gelb) mal dunkel
+       (Violett) – ein fester Auf- oder Abschlag stimmt dann immer nur fuer
+       die Haelfte. Ein dunkler Rand trennt dagegen auf jedem Untergrund.
+
+       Gemacht wird er wie beim Cel-Shading ueblich: dieselbe Form etwas
+       breiter, nur die RUECKSEITEN gezeichnet und darunter gelegt. Von vorn
+       sieht man davon nur den Saum, der ringsum hervorschaut. */
     truppenMeshes.push(geos.map(g=>{
-      /* Etwas dunkler als das Land, auf dem sie liegen. In der
-         Besitzer-Ansicht hat die Flaeche genau die Spielerfarbe – ein Stein
-         in derselben Farbe verschwindet darauf spurlos. Zu dunkel darf er
-         aber auch nicht sein, sonst wirkt er wie ein Fleck statt wie
-         gespritzter Kunststoff; den Rest der Trennung macht der Schatten. */
-      const farbe=new THREE.Color(p.color).multiplyScalar(0.72);
-      const mat=new THREE.MeshToonMaterial({color:farbe,gradientMap:stufen});
-      const m=new THREE.InstancedMesh(g,mat,TRUPPEN_PLATZ);
-      m.castShadow=true;m.count=0;
-      /* Angeklickt wird das Land darunter, nicht die Figur. */
-      m.raycast=function(){};
-      m.frustumCulled=false;
-      truppenGruppe.add(m);
-      return m;
+      const hell=new THREE.Color(p.color).lerp(new THREE.Color(0xffffff),0.22);
+      const koerper=new THREE.InstancedMesh(g,
+        new THREE.MeshToonMaterial({color:hell,gradientMap:stufen}),TRUPPEN_PLATZ);
+      const rand=new THREE.InstancedMesh(g,
+        new THREE.MeshBasicMaterial({color:0x0a0f18,side:THREE.BackSide}),TRUPPEN_PLATZ);
+      koerper.castShadow=true;
+      [koerper,rand].forEach(m=>{
+        m.count=0;
+        /* Angeklickt wird das Land darunter, nicht der Stein. */
+        m.raycast=function(){};
+        m.frustumCulled=false;
+        truppenGruppe.add(m);
+      });
+      return {koerper,rand};
     }));
   });
 }
@@ -860,32 +956,40 @@ function truppenAktualisieren(){
     truppenFarben.every((f,i)=>G.players[i]&&G.players[i].color===f);
   if(!passt)truppenAufbauen(G.players);
   const zaehler=truppenMeshes.map(()=>[0,0,0]);
-  const mat=new THREE.Matrix4(),pos=new THREE.Vector3(),
+  const mat=new THREE.Matrix4(),matRand=new THREE.Matrix4(),pos=new THREE.Vector3(),
         drehung=new THREE.Quaternion(),eins=new THREE.Vector3(1,1,1);
+  /* Der Rand vor allem in der Flaeche breiter – gesehen wird die Silhouette
+     von oben. Eine Spur hoeher darf er sein: die Rueckseiten-Darstellung
+     zeichnet die Oberseite ohnehin nicht, sichtbar bleibt nur der Kragen,
+     der ringsum hervorschaut. */
+  const randMass=new THREE.Vector3(1.26,1.05,1.26);
   for(const id in G.owner){
     const o=G.owner[id],n=G.armies[id];
     if(o===NONE||!n||!truppenMeshes[o])continue;
-    const c=M.center[id];if(!c)continue;
-    const q=mapPt(c.x,c.y);
+    const plaetze=streuPunkte(id);
+    if(!plaetze.length)continue;
     let rest=n,platz=0;
     for(const st of STAFFEL){
       let k=Math.floor(rest/st.wert);rest-=k*st.wert;
-      while(k-->0&&platz<PLAETZE.length){
-        const [dx,dz]=PLAETZE[platz++];
-        const x=q[0]+dx*TRUPPE_ABSTAND,z=-q[1]+dz*TRUPPE_ABSTAND;
+      while(k-->0&&platz<plaetze.length){
+        const q=mapPt(plaetze[platz][0],plaetze[platz][1]);platz++;
+        const x=q[0],z=-q[1];
         pos.set(x,DECKEL+MALEREI_HOEHE+0.02+hoehenSpiel(x,z),z);
         /* Jede Figur ein wenig anders gedreht – exakt ausgerichtete Steine
            sehen aus wie hingerechnet, nicht wie hingestellt. */
         drehung.setFromAxisAngle(new THREE.Vector3(0,1,0),rauschLage(x*9,z*9,1.1)*6.283);
         mat.compose(pos,drehung,eins);
-        const m=truppenMeshes[o][st.art];
-        m.setMatrixAt(zaehler[o][st.art]++,mat);
+        matRand.compose(pos,drehung,randMass);
+        const paar=truppenMeshes[o][st.art];
+        const i=zaehler[o][st.art]++;
+        paar.koerper.setMatrixAt(i,mat);
+        paar.rand.setMatrixAt(i,matRand);
       }
     }
   }
-  truppenMeshes.forEach((satz,pi)=>satz.forEach((m,ai)=>{
-    m.count=Math.min(zaehler[pi][ai],TRUPPEN_PLATZ);
-    m.instanceMatrix.needsUpdate=true;
+  truppenMeshes.forEach((satz,pi)=>satz.forEach((paar,ai)=>{
+    const n=Math.min(zaehler[pi][ai],TRUPPEN_PLATZ);
+    [paar.koerper,paar.rand].forEach(m=>{m.count=n;m.instanceMatrix.needsUpdate=true;});
   }));
   /* Die Schattenkarte wird sonst nur einmal beim Aufbau gerechnet – die
      Figuren kamen erst danach und warfen deshalb keinen Schatten. Genau der
