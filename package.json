@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test werkzeug/regeln-testen.mjs",
+    "netztest": "node werkzeug/netz-testen.mjs",
     "karte": "node werkzeug/karte-backen.mjs",
     "karte:gezeichnet": "node werkzeug/karte-backen.mjs --gezeichnet",
     "karte:fein": "node werkzeug/karte-backen.mjs --fein",

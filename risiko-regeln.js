@@ -76,10 +76,31 @@ const ADJ={
  indonesia:["siam","newguinea","westaustralia"],newguinea:["indonesia","westaustralia","eastaustralia"],
  westaustralia:["indonesia","newguinea","eastaustralia"],eastaustralia:["newguinea","westaustralia"]};
 const SYMS=["inf","kav","art"],START={2:40,3:35,4:30,5:25,6:20},NONE=-1;
-function rnd(s){s.rng=(s.rng+0x6D2B79F5)|0;let t=s.rng;t=Math.imul(t^(t>>>15),t|1);
+/* ---------- Zufall ----------
+   Im Hotseat kommt jede Zufallszahl aus dem Zustand: gleicher Startwert,
+   gleicher Spielverlauf, jederzeit nachstellbar.
+
+   Online geht das nicht. Wer den Zustand hat, kann jeden kuenftigen Wurf
+   vorausberechnen – gemessen: 100 % Trefferquote, und ein Verteidiger, der
+   den Wurf kennt, verliert 46 % weniger Truppen (DOKUMENTATION.md 9).
+   Deshalb bringt online JEDE Aktion ihre Zufallszahlen mit; erzeugt werden
+   sie beim Server, wenn er die Aktion annimmt. `s.beutel` ist dieser
+   Vorrat, gueltig nur waehrend einer Aktion.
+
+   Ist der Beutel leer, aber vorhanden, wird das ein Fehler und kein
+   stiller Rueckfall auf den eigenen Generator. Das ist Absicht: ein
+   Rueckfall liefe auf jedem Geraet anders weiter, und die Spielstaende
+   liefen auseinander, ohne dass es jemandem auffiele. Lieber laut. */
+function rnd(s){
+  const b=s.beutel;
+  if(b){
+    if(b.i>=b.werte.length)
+      throw new Error("Zufallsvorrat der Aktion erschoepft – der Server muss mehr mitschicken.");
+    return b.werte[b.i++];
+  }
+  s.rng=(s.rng+0x6D2B79F5)|0;let t=s.rng;t=Math.imul(t^(t>>>15),t|1);
   t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;}
 function rint(s,n){return Math.floor(rnd(s)*n);}
-function shuffle(s,a){for(let i=a.length-1;i>0;i--){const j=rint(s,i+1);const t=a[i];a[i]=a[j];a[j]=t;}return a;}
 function roll(s,n){const a=[];for(let i=0;i<n;i++)a.push(1+rint(s,6));return a.sort((x,y)=>y-x);}
 function clone(s){return JSON.parse(JSON.stringify(s));}
 function say(s,t,c,d){s.log.push({t:t,c:c||"l-sys",d:d||null});}
@@ -132,15 +153,23 @@ function defendMaxOf(s,t){return Math.max(1,Math.min(2,s.armies[t]));}
 function fortifyCapOf(s,f){return s.fortCap[f]===undefined?Math.max(0,s.armies[f]-1):s.fortCap[f];}
 function fortifyMaxOf(s,f){return Math.max(0,Math.min(fortifyCapOf(s,f),s.armies[f]-1));}
 function inSetup(s){return s.phase==="claim"||s.phase==="deploy";}
-function buildDeck(s){const d=[];Object.keys(TERR).forEach((id,i)=>d.push({sym:SYMS[i%3]}));
-  d.push({sym:"wild"});d.push({sym:"wild"});return shuffle(s,d);}
+/* Der Stapel wird NICHT vorab gemischt. Frueher geschah das beim Anlegen
+   des Spiels aus dem Startwert – und damit lag die Reihenfolge fuer jeden
+   fest, der den Startwert kennt. Im Hotseat egal, online ein Leck: man
+   wuesste, welche Karte man als Naechstes zieht.
+
+   Stattdessen wird beim Ziehen eine zufaellige Karte aus dem Rest genommen.
+   Das ist dasselbe Spiel, aber die Zufallszahl faellt erst im Moment des
+   Ziehens – und kommt online vom Server. */
+function buildDeck(){const d=[];Object.keys(TERR).forEach((id,i)=>d.push({sym:SYMS[i%3]}));
+  d.push({sym:"wild"});d.push({sym:"wild"});return d;}
 function createGame(players,opts,seed){
   const s={players:players.map(p=>({name:p.name,color:p.color,alive:true})),owner:{},armies:{},
     opts:{cap3:!!opts.cap3,cards:!!opts.cards,draft:!!opts.draft,dice:!!opts.dice},
     cur:0,phase:"claim",reinf:0,toPlace:[],hands:players.map(()=>[]),deck:[],discard:[],
     tradeCount:0,conquered:false,pending:null,fortCap:{},winner:null,rng:(seed>>>0)||1,log:[]};
   Object.keys(TERR).forEach(id=>{s.owner[id]=NONE;s.armies[id]=0;});
-  const per=START[players.length]||30;s.toPlace=players.map(()=>per);s.deck=buildDeck(s);
+  const per=START[players.length]||30;s.toPlace=players.map(()=>per);s.deck=buildDeck();
   say(s,"Spiel gestartet · "+players.length+" Spieler · je "+per+" Truppen.");
   if(s.opts.draft){say(s,"Aufstellung: wählt reihum ein freies Land.");return s;}
   return autoSetup(s);}
@@ -156,8 +185,12 @@ function nextDeployer(s){for(let i=1;i<=s.players.length;i++){const c=(s.cur+i)%
 function beginTurn(s){let g=0;while(!s.players[s.cur].alive&&g++<12)s.cur=(s.cur+1)%s.players.length;
   s.phase="reinforce";s.reinf=incomeOf(s,s.cur);s.conquered=false;s.pending=null;s.fortCap={};
   say(s,s.players[s.cur].name+" am Zug · +"+s.reinf+" Truppen.");}
-function drawCard(s,pi){if(s.deck.length===0){s.deck=shuffle(s,s.discard);s.discard=[];}
-  if(s.deck.length===0)return;s.hands[pi].push(s.deck.pop());}
+function drawCard(s,pi){
+  /* Ist der Stapel leer, kommt der Ablagestapel zurueck. Mischen ist dabei
+     unnoetig geworden – gezogen wird ohnehin an zufaelliger Stelle. */
+  if(s.deck.length===0){s.deck=s.discard;s.discard=[];}
+  if(s.deck.length===0)return;
+  s.hands[pi].push(s.deck.splice(rint(s,s.deck.length),1)[0]);}
 function checkWin(s){const o=new Set(Object.keys(TERR).map(id=>s.owner[id]));
   if(o.size===1){s.winner=[...o][0];say(s,s.players[s.winner].name+" gewinnt!","l-conq");}}
 /* Wertet einen begonnenen Angriff aus: der Verteidiger wirft nD Wuerfel,
@@ -250,10 +283,24 @@ function validate(s,a){
     if(mustTrade(s))return{ok:false,error:"Bei 5+ Karten musst du erst tauschen"};
     return{ok:true};
    default:return{ok:false,error:"Unbekannte Aktion"};}}
-function apply(state,a){
+/* Wieviele Zufallszahlen eine Aktion hoechstens verbraucht. Der Server
+   schickt so viele mit; was uebrig bleibt, verfaellt. Der Wert ist bewusst
+   grosszuegig – ein zu kleiner Beutel faellt erst mitten im Spiel auf, und
+   dann laut (siehe rnd). Groesster echter Bedarf: ATTACK ohne die
+   Wuerfel-Hausregel, das sind bis zu drei plus zwei Wuerfel. */
+const ZUFALL_JE_AKTION=8;
+
+/* `beutel` ist der Zufallsvorrat fuer genau diese eine Aktion. Fehlt er,
+   bleibt alles wie im Hotseat: der Generator im Zustand liefert. */
+function apply(state,a,beutel){
   const v=validate(state,a);
   if(!v.ok)return{ok:false,error:v.error,state:state};
   const s=clone(state);
+  /* Nur waehrend der Aktion am Zustand, nie darin gespeichert: er wuerde
+     sonst mitgeklont und mitgespeichert und beim naechsten Mal falsche
+     Zahlen liefern. */
+  if(beutel&&beutel.length)s.beutel={werte:beutel,i:0};
+  const fertig=(r)=>{if(r.state)delete r.state.beutel;return r;};
   switch(a.type){
    case "CLAIM":{s.owner[a.terr]=s.cur;s.armies[a.terr]=1;s.toPlace[s.cur]--;
      if(freeTerr(s).length===0){say(s,"Alle Länder vergeben. Jetzt Starttruppen setzen.");
@@ -262,7 +309,7 @@ function apply(state,a){
    case "DEPLOY":{s.armies[a.terr]++;s.toPlace[s.cur]--;
      if(!s.toPlace.some(n=>n>0)){say(s,"Aufstellung abgeschlossen.");s.cur=0;beginTurn(s);}
      else nextDeployer(s);break;}
-   case "AUTO_SETUP":return{ok:true,state:autoSetup(s)};
+   case "AUTO_SETUP":return fertig({ok:true,state:autoSetup(s)});
    case "PLACE":s.armies[a.terr]++;s.reinf--;break;
    case "TRADE":{const h=s.hands[s.cur];
      [...a.cards].sort((x,y)=>y-x).forEach(i=>{s.discard.push(h[i]);h.splice(i,1);});
@@ -276,12 +323,12 @@ function apply(state,a){
      const nA=s.opts.dice&&a.dice!==undefined?a.dice:attackMaxOf(s,a.from);
      const aD=roll(s,nA),maxD=defendMaxOf(s,a.to);
      s.pending={type:"defend",from:a.from,to:a.to,aDice:aD,max:maxD};
-     if(!s.opts.dice||maxD<2)return{ok:true,state:resolveCombat(s,maxD)};
+     if(!s.opts.dice||maxD<2)return fertig({ok:true,state:resolveCombat(s,maxD)});
      say(s,s.players[s.cur].name+" greift "+TERR[a.to].n+" an mit "+nA+
        (nA===1?" Würfel":" Würfeln")+" · "+s.players[s.owner[a.to]].name+" wählt die Abwehr.",
        "l-att",{a:aD,d:[]});
      break;}
-   case "DEFEND":return{ok:true,state:resolveCombat(s,a.dice)};
+   case "DEFEND":return fertig({ok:true,state:resolveCombat(s,a.dice)});
    case "OCCUPY":{const p=s.pending;s.armies[p.from]-=a.count;s.armies[p.to]=a.count;s.pending=null;
      say(s,a.count+" Truppen nach "+TERR[p.to].n+" vorgeschoben.","l-conq");checkWin(s);break;}
    case "FORTIFY":{const cap=fortifyCapOf(s,a.from);
@@ -300,8 +347,8 @@ function apply(state,a){
      else{if(s.opts.cards&&s.conquered){drawCard(s,s.cur);say(s,s.players[s.cur].name+" zieht eine Karte.","l-card");}
        s.cur=(s.cur+1)%s.players.length;beginTurn(s);}
      break;}}
-  return{ok:true,state:s};}
-return{CONTINENTS,TERR,ADJ,NONE,createGame,apply,validate,terrOf,freeTerr,incomeOf,
+  return fertig({ok:true,state:s});}
+return{CONTINENTS,TERR,ADJ,NONE,ZUFALL_JE_AKTION,createGame,apply,validate,terrOf,freeTerr,incomeOf,
   tradeValue,isValidSet,mustTrade,fortifyCapOf,fortifyMaxOf,inSetup,
   attackMaxOf,defendMaxOf,viewFor};
 })();

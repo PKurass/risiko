@@ -443,3 +443,68 @@ test("Verschiedene Startwerte ergeben verschiedene Spiele", () => {
     );
   assert.notEqual(spiel(1), spiel(2));
 });
+
+/* ---------------------------------------------------------------------
+   Zufall aus dem Beutel – die Grundlage des Online-Betriebs.
+   Ohne diese Zusicherungen liefen zwei Geraete unbemerkt auseinander.
+   --------------------------------------------------------------------- */
+
+test("Beutel bestimmt den Wurf, nicht der Zustand", () => {
+  // Sechs Einsen: 1 + floor(0.0 * 6) = 1
+  const einsen = [0, 0, 0, 0, 0, 0, 0, 0];
+  const s = bau({ armies: { china: 8, india: 8 }, owner: { india: 1 }, opts: { dice: false } });
+  const n = gut(E.apply(s, { type: "ATTACK", from: "china", to: "india" }, einsen));
+  const eintrag = n.log.filter((e) => e.d).pop();
+  assert.deepEqual(eintrag.d.a, [1, 1, 1], "Angreifer muss lauter Einsen werfen");
+  assert.deepEqual(eintrag.d.d, [1, 1], "Verteidiger muss lauter Einsen werfen");
+});
+
+test("Gleicher Beutel ergibt auf jedem Geraet denselben Zustand", () => {
+  /* Der eigentliche Punkt: die beiden Zustaende haben VERSCHIEDENE
+     Zufallsgeneratoren, aber dieselbe Aktion mit demselben Beutel muss
+     trotzdem exakt dasselbe ergeben. Sonst driften die Mitspieler ab. */
+  const beutel = [0.83, 0.12, 0.47, 0.91, 0.05, 0.6, 0.3, 0.7];
+  const geraet = (rng) => {
+    const s = bau({ armies: { china: 8, india: 8 }, owner: { india: 1 }, opts: { dice: false } });
+    s.rng = rng;
+    const n = gut(E.apply(s, { type: "ATTACK", from: "china", to: "india" }, beutel));
+    return JSON.stringify({ a: n.armies.china, d: n.armies.india, log: n.log.slice(-1) });
+  };
+  assert.equal(geraet(1), geraet(999999));
+});
+
+test("Leerer Beutel bricht laut ab, statt still weiterzuwuerfeln", () => {
+  const s = bau({ armies: { china: 8, india: 8 }, owner: { india: 1 }, opts: { dice: false } });
+  assert.throws(
+    () => E.apply(s, { type: "ATTACK", from: "china", to: "india" }, [0.5]),
+    /Zufallsvorrat/,
+    "Ein zu kleiner Beutel muss auffallen – ein stiller Rueckfall liesse die Spielstaende auseinanderlaufen"
+  );
+});
+
+test("Der Beutel bleibt nicht im Zustand zurueck", () => {
+  const s = bau({ armies: { china: 8, india: 8 }, owner: { india: 1 } });
+  const n = gut(E.apply(s, { type: "ATTACK", from: "china", to: "india", dice: 3 },
+    new Array(E.ZUFALL_JE_AKTION).fill(0.5)));
+  assert.equal(n.beutel, undefined, "Ein gespeicherter Beutel wuerde beim naechsten Zug falsche Zahlen liefern");
+});
+
+test("Kartenstapel ist aus dem Startwert nicht vorhersagbar", () => {
+  /* Frueher wurde der Stapel beim Anlegen aus dem Startwert gemischt – wer
+     ihn kannte, kannte seine kuenftigen Karten. Jetzt faellt die Zahl erst
+     beim Ziehen, und online kommt sie vom Server. */
+  const zieh = (beutel) => {
+    /* siam bleibt beim Gegner, sonst ist das Spiel mit der Eroberung
+       gewonnen und jede weitere Aktion wird abgelehnt. */
+    let s = bau({ armies: { china: 8, india: 1 }, owner: { india: 1, siam: 1 }, opts: { cap3: false } });
+    s = gut(E.apply(s, { type: "ATTACK", from: "china", to: "india" }, [0.99, 0.99, 0.99, 0, 0, 0, 0, 0]));
+    s = gut(E.apply(s, { type: "OCCUPY", count: 1 }));
+    assert.equal(s.conquered, true, "Eroberung muss geklappt haben, sonst zieht niemand eine Karte");
+    s = gut(E.apply(s, { type: "END_PHASE" }));      // Angriff -> Verschieben
+    s = gut(E.apply(s, { type: "END_PHASE" }, beutel)); // Zugende: Karte ziehen
+    return s.hands[0].map((k) => k.sym).join(",");
+  };
+  const vorn = new Array(E.ZUFALL_JE_AKTION).fill(0);
+  const hinten = new Array(E.ZUFALL_JE_AKTION).fill(0.999);
+  assert.notEqual(zieh(vorn), zieh(hinten), "Verschiedene Zufallszahlen muessen verschiedene Karten ziehen");
+});

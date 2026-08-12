@@ -30,3 +30,4 @@ grafik/land-textur.png
 
 # Formvorschau der Spielsteine – jederzeit neu baubar mit npm run vorschau
 form-vorschau.png
+server/zugang.php
