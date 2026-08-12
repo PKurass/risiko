@@ -276,8 +276,19 @@ Offene Punkte (ausführlich in DOKUMENTATION.md Abschnitt 8 und 9):
 - **Optik** – gemalte Weltkarte liegt auf, Klippen laufen ungleichmäßig hoch,
   das Meer hat Flachwasser entlang der Küsten, der Schaumsaum schwankt und
   reißt stellenweise ab. Feinschliff jederzeit möglich.
-- **Online-Multiplayer:** vorbereitet durch die Trennung Regelkern/Darstellung,
-  aber noch nicht gebaut. Der Sichtfilter `viewFor` steht bereits
-  (DOKUMENTATION.md 4.6); offen ist die Serverwahl. **Wichtig dabei:**
-  gewürfelt werden muss auf dem Server – wer den vollen Zustand hat, kann
-  jeden Wurf vorab ausrechnen. Siehe Abschnitt 9.
+- **Online-Multiplayer – das ist der nächste Schritt.** Vorbereitet durch die
+  Trennung Regelkern/Darstellung, aber noch nicht gebaut. Entschieden ist:
+
+  - **Wo:** die vorhandene IONOS-Webseite. Sie kann PHP und MySQL, aber
+    keinen dauerhaft laufenden Node-Prozess – also **Postfach mit Abholen im
+    Takt**, kein WebSocket.
+  - **Was über die Leitung geht:** dieselben Aktions-Pakete, die die
+    Oberfläche ohnehin an `apply()` schickt.
+  - **Gewürfelt wird auf dem Server.** Wer den vollen Zustand hat, kann jeden
+    Wurf vorab ausrechnen – das ist gemessen, nicht vermutet (100 % Trefferquote
+    gegenüber 2 % mit Sichtfilter). Der Filter `viewFor` steht dafür bereit,
+    siehe DOKUMENTATION.md 4.6 und Abschnitt 9.
+
+  Der Teil ist **fast reine Logik** – ohne Browser prüfbar, mit `npm test`
+  abzusichern, ohne ein einziges Bild. Deshalb eignet er sich gut für eine
+  eigene, günstige Sitzung.
