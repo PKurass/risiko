@@ -659,47 +659,95 @@ Weg ist `npm run karte`, weil er reproduzierbar ist und im Repo landet.
 
 ---
 
-## 9. Nächster großer Schritt: Online-Multiplayer
+## 9. Online-Multiplayer (gebaut)
 
-Vorbereitet durch die Trennung Regelkern/Darstellung. Empfohlener Weg
-(ohne eigenen Server): **Supabase** (Postgres + Realtime) für Lobby, Raumcode
-und Zustands-Synchronisierung, Veröffentlichung über **Vercel** oder GitHub
-Pages. Da alle Aktionen deterministische Pakete sind und der Zufall an einem
-`seed` hängt, genügt es, Aktionen (nicht ganze Zustände) zu übertragen und bei
-jedem Client durch denselben `RiskEngine.apply` laufen zu lassen. Serverseitige
-Validierung über dasselbe `validate()` verhindert Schummeln – seit der
-Trennung in `risiko-regeln.js` lässt sich der Kern dafür unverändert in Node
-laden.
+Läuft über ein **Postfach**: `server/risiko.php` führt je Spiel eine streng
+durchnummerierte Liste von Zügen. Jeder Mitspieler holt, was er noch nicht
+hat, und spielt es in derselben Reihenfolge nach. Es wird **nie ein
+Spielstand übertragen** – dieselbe Idee wie ein Schachprotokoll.
 
-> **Vorher zu klären: der Zufall darf nicht vorhersehbar sein.**
-> `rng` liegt im Zustand, den bei diesem Entwurf jeder Client vollständig
-> besitzt, und `rnd()` ist eine reine Funktion davon. Jeder Mitspieler könnte
-> also den nächsten Wurf ausrechnen, **bevor** er fällt. Im Hotseat ist das
-> belanglos; online ist es ein Totalausfall – und die Hausregel `dice`
-> verschärft es, weil dort Entscheidungen bewusst an verdeckter Zufälligkeit
-> hängen: ein Verteidiger könnte beide Optionen durchrechnen und die bessere
-> nehmen.
->
-> Der Zustand verrät ohnehin mehr, als er darf: `deck` und die `hands` aller
-> Spieler stehen darin. Beides zusammen führt zur selben Antwort – der Server
-> hält die Wahrheit, jeder Spieler bekommt nur eine gefilterte Sicht.
->
-> Konsequenz: entweder würfelt der Server (er hält `rng` und liefert nur die
-> gefallenen Augen), oder die Würfe werden per Commit-Reveal abgesichert.
-> Das ist eine Architekturentscheidung **vor** der ersten Zeile Netzwerkcode,
-> denn davon hängt ab, ob der Server nur validiert oder die Wahrheit hält.
-> Commit-Reveal käme ohne vertrauenswürdigen Server aus, kostet aber eine
-> zusätzliche Runde pro Wurf und hilft gegen das Kartenleck gar nicht.
+### Warum der Server keine Regeln kennt
 
-**Vorhanden ist bereits** `viewFor(state, pi)` (Abschnitt 4.6): es macht aus
-dem vollen Zustand die Sicht eines einzelnen Spielers. Damit ist der Teil,
-der zum Regelkern gehört, unabhängig von der Serverwahl festgezurrt.
+Der naheliegende Entwurf wäre ein Server, der `validate()` mitlaufen lässt.
+Das hätte einen zweiten Regelkern in PHP bedeutet, der bei jeder Hausregel
+mitgepflegt werden muss. Läuft er auch nur an einer Stelle auseinander,
+streiten sich hinterher zwei Rechner darüber, wer gewonnen hat. Deshalb:
+**eine einzige Fassung der Regeln**, in `risiko-regeln.js`, und ein Server,
+der davon nichts weiß.
 
-Wenn der Server ohnehin den Zustand verschickt, wird der Rest **einfacher**
-als der ursprüngliche Entwurf: Aktions-Wiedergabe und Determinismus werden
-für die Synchronisierung gar nicht mehr gebraucht. Der deterministische
-Zufall bleibt trotzdem wertvoll – als Testwerkzeug, weil sich jeder Fehler
-mit demselben Startwert beliebig oft nachstellen lässt.
+Er tut genau drei Dinge: Züge einreihen, prüfen *wer* einreicht (jeder
+Mitspieler hat ein Geheimnis, daraus folgt seine Platznummer), und würfeln.
+
+### Der Zufall — der eigentliche Grund für den Server
+
+`rnd()` ist eine reine Funktion von `rng` im Zustand. Wer den Zustand hat,
+kann jeden künftigen Wurf ausrechnen, **bevor** er fällt. Gemessen: 100 %
+Trefferquote, und ein Verteidiger, der den Wurf kennt, verliert 46 % weniger
+Truppen. Die Hausregel `dice` verschärft das, weil dort bewusst unter
+Unsicherheit entschieden wird.
+
+Deshalb bringt online **jede Aktion ihre Zufallszahlen mit**:
+
+```js
+apply(state, aktion, beutel)    // beutel = Zahlen vom Server, oder null
+```
+
+Fehlt der Beutel, bleibt alles wie im Hotseat. Ist er vorhanden **aber
+leer**, wirft der Kern einen Fehler statt still auf `rng` zurückzufallen —
+ein Rückfall liefe auf jedem Gerät anders weiter, und die Spielstände liefen
+auseinander, ohne dass es jemandem auffiele. `ZUFALL_JE_AKTION` (8) muss zu
+`ZUFALL_JE_ZUG` im Server passen; größter echter Bedarf sind 5.
+
+### Das zweite Leck: der Kartenstapel
+
+Der Stapel wurde beim Anlegen aus dem Startwert gemischt — also lag seine
+Reihenfolge für jeden fest, der den Startwert kennt. Im Hotseat belanglos,
+online ein Leck: man wüsste, welche Karte man als Nächstes zieht. Jetzt wird
+**beim Ziehen** eine zufällige Karte aus dem Rest genommen, und die Zahl
+dafür kommt aus dem Beutel.
+
+`viewFor` (Abschnitt 4.6) wird bei diesem Entwurf nicht mehr gebraucht, weil
+kein Zustand über die Leitung geht. Es bleibt für den Fall, dass später doch
+einmal ein Zustand verschickt werden soll.
+
+### Was NICHT geprüft wird
+
+Ob ein Zug regelkonform ist. Dafür bräuchte der Server den Regelkern. Unter
+Freunden ist das die richtige Abwägung: wer schummeln will, müsste seinen
+Browser umbauen — und es fiele auf, weil sein Brett von allen anderen
+abweicht.
+
+### Aufbau im Client
+
+| Teil | Aufgabe |
+|---|---|
+| `risiko-netz.js` | Einreichen, Abholen, Takt. Kennt weder Regeln noch Darstellung |
+| `anwenden(a, zufall)` | Die **einzige** Stelle, an der der Spielstand fortschreitet – gleich ob eigener oder fremder Zug |
+| `darfIch(a)` | Zugsperre. Ausnahme: die Abwehr wirft der Verteidiger, und der ist gerade nicht am Zug |
+| `dispatch(a)` | Offline direkt, online einreichen und auf die Rückkehr warten |
+
+Der eigene Zug wird **nicht sofort** angewendet, sondern erst wenn er vom
+Server zurückkommt — mit seinen Würfeln und an seiner Stelle in der
+Reihenfolge. Sonst hätte man kurzzeitig ein anderes Brett als alle anderen,
+und ein abgelehnter Zug wirkte trotzdem.
+
+Online wird **nicht lokal gesichert**: ein wiederaufgenommener Stand wüsste
+nicht, bis zu welchem Zug er nachgespielt hat, und liefe der Wahrheit auf dem
+Server stumm hinterher. Wiedereinstieg heißt: Kennung eingeben, alles neu
+nachspielen.
+
+### Geprüft
+
+```bash
+npm run netztest      # zwei Spielstände über den echten PHP-Server
+npm run browsertest   # zwei echte Browser, Lobby bis Kampf
+```
+
+Beide ohne einen einzigen Screenshot – die Frage ist „stehen überall
+dieselben Bretter?", und die beantwortet ein Zeichenkettenvergleich genauer
+als jedes Auge. Geprüft werden außerdem: Geheimnisse gehen nie nach außen,
+ein fremdes darf nicht starten, ein erfundenes nicht ziehen, zwei Spiele
+sehen einander nicht, und die Zugsperre lässt genau eine Ausnahme durch.
 
 ---
 

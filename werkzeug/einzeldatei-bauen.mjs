@@ -48,6 +48,7 @@ const ersetzungen = [
   ['<script src="risiko-regeln.js"></script>', "risiko-regeln.js"],
   ['<script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>', "risiko-daten.js"],
   ['<script src="risiko-karte.js"></script>', "risiko-karte.js"],
+  ['<script src="risiko-netz.js"></script>', "risiko-netz.js"],
   ['<script src="grafik/land-textur.js" onerror="window.__keineTextur=1"></script>',
     "grafik/land-textur.js", true],
   ['<script src="vendor/three.min.js"></script>', "vendor/three.min.js"],

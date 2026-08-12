@@ -21,6 +21,8 @@ kurz bleiben, damit sie in jeder Sitzung mitgelesen werden kann.
 
 ```bash
 npm test                              # Regelkern, ohne Browser
+npm run netztest                      # Server + Regelkern (braucht php)
+npm run browsertest                   # zwei echte Browser, ohne Screenshots
 npm run karte                         # Risk.svg -> risiko-daten.js
 npm run textur -- grafik/Risk_tex.png # Malerei -> grafik/land-textur.js
 npm run einzeldatei                   # eine verschickbare HTML-Datei

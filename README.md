@@ -1,8 +1,9 @@
 # ⚔️ Risiko – Hausregel-Edition
 
-Browserbasiertes Risiko mit eigenen Hausregeln, hotseat (alle Spieler an einem
-Gerät). Kein Framework, kein Build-Schritt, keine Installation – `risiko.html`
-im Browser öffnen genügt.
+Browserbasiertes Risiko mit eigenen Hausregeln – hotseat an einem Gerät oder
+**online mit Freunden**. Kein Framework, kein Build-Schritt, keine
+Installation: `risiko.html` im Browser öffnen genügt. Für den Online-Modus
+kommt eine einzige PHP-Datei beim Webhoster dazu.
 
 Die ausführliche technische Beschreibung steht in **[DOKUMENTATION.md](DOKUMENTATION.md)**.
 Wer am Code arbeitet, sollte dort mindestens Abschnitt 3 (Architektur) und
@@ -124,16 +125,57 @@ Zusatzarbeit mit.
 
 Fehlt `grafik/land-textur.js`, läuft das Spiel wie bisher, nur einfarbig.
 
+## Online mit Freunden
+
+Im Startmenü unten: **Spiel eröffnen** gibt eine sechsstellige Kennung aus,
+die anderen tragen sie unter **Beitreten** ein. Wer eröffnet hat, startet.
+
+Einrichten (einmalig, beim Webhoster):
+
+1. `server/risiko.php` ins Web-Verzeichnis legen, in einen Ordner `server/`
+   neben `risiko.html`.
+2. `server/zugang.beispiel.php` als `server/zugang.php` kopieren und die
+   MySQL-Daten eintragen (bei IONOS im Kundenmenü unter „Datenbanken").
+   Die Tabellen legt der Server beim ersten Aufruf selbst an.
+
+Das war's – kein Node, kein Prozess, der laufen muss.
+
+**Wie es funktioniert:** übertragen werden nie Spielstände, sondern nur die
+Liste der Züge. Jeder spielt sie in derselben Reihenfolge nach und kommt
+damit auf dasselbe Brett – dieselbe Idee wie ein Schachprotokoll.
+
+**Gewürfelt wird auf dem Server.** Das ist der Grund, warum es ihn gibt: wer
+den vollen Spielstand hat, kann jeden künftigen Wurf ausrechnen, bevor er
+fällt. Deshalb bekommt jeder Zug seine Zufallszahlen erst beim Einreichen.
+Aus demselben Grund wird der Kartenstapel nicht mehr vorab gemischt.
+
+Der Server kennt **keine Regel** und soll auch keine kennen. Ein zweiter
+Regelkern in PHP müsste bei jeder Hausregel mitgepflegt werden und liefe
+früher oder später auseinander – dann streiten sich zwei Rechner darüber, wer
+gewonnen hat. Er reiht Züge ein, prüft wer einreicht, und würfelt.
+
+Was er nicht prüft: ob ein Zug regelkonform ist. Unter Freunden ist das die
+richtige Abwägung; wer schummeln wollte, müsste seinen Browser umbauen, und
+es fiele auf, weil sein Brett von allen anderen abwiche.
+
 ## Tests
 
 ```bash
-npm test
+npm test          # Regelkern, ohne Browser
+npm run netztest  # zwei Spielstände über den echten PHP-Server (braucht php)
+npm run browsertest  # zwei echte Browser, Lobby bis Kampf
 ```
 
-Prüft den Regelkern ohne Browser: Weltdaten (beidseitige Nachbarschaften,
-Kontinent-Zuordnung), Einkommen und Boni, Kartenstaffel, den zweistufigen
-Kampf, die Hausregeln, Aufstellung, Phasenwechsel und den Determinismus.
-28 Tests, unter einer Sekunde.
+`npm test` prüft den Regelkern ohne Browser: Weltdaten (beidseitige
+Nachbarschaften, Kontinent-Zuordnung), Einkommen und Boni, Kartenstaffel, den
+zweistufigen Kampf, die Hausregeln, Aufstellung, Phasenwechsel, den
+Determinismus und den Zufallsbeutel. 33 Tests, unter einer Sekunde.
+
+Die beiden Netztests starten den echten `server/risiko.php` gegen eine
+SQLite-Datei – derselbe Code, der beim Hoster auf MySQL läuft. Sie prüfen die
+eine Zusicherung, auf der alles steht: **nach jedem Zug stehen überall
+dieselben Bretter.** Bewusst ohne Screenshots; die Frage beantwortet ein
+Zeichenkettenvergleich genauer als jedes Auge.
 
 ## Eine Datei zum Verschicken
 
@@ -144,8 +186,9 @@ npm run einzeldatei
 Packt `risiko.html` samt Karten-Modul, gebackener Karte und Three.js in eine
 einzige `risiko-komplett.html` (rund 675 kB). Die läuft per Doppelklick aus
 jedem beliebigen Ordner – ohne Repo, ohne Nachbardateien, ohne Internet.
-Praktisch zum Ausprobieren und zum Herumschicken, solange es noch keine
-Online-Fassung gibt.
+Praktisch zum Ausprobieren und zum Herumschicken. Online spielen lässt sich
+damit nicht – dafür muss die Seite bei einem Hoster liegen, neben
+`server/risiko.php`.
 
 Zum Weiterentwickeln bleibt `risiko.html` das Original; die verpackte Fassung
 ist ein Wegwerf-Ergebnis und deshalb nicht eingecheckt.
@@ -172,6 +215,8 @@ ineinander. Ebenfalls nicht eingecheckt.
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
 | `werkzeug/textur-backen.mjs` | Prüft und backt die Landtextur (`npm run textur`) |
 | `werkzeug/form-vorschau.mjs` | Zeigt die Spielsteine einzeln und misst sie nach (`npm run vorschau`) |
+| `risiko-netz.js` | Netzteil: Züge einreichen und abholen |
+| `server/risiko.php` | Postfach-Server (PHP + MySQL), kennt keine Regeln |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei (`--fragment` für die Web-Fassung) |
 | `DOKUMENTATION.md` | Technische Dokumentation |

@@ -89,6 +89,13 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 .pick button{flex:1;padding:14px 8px;font-size:15px;line-height:1.3}
 .pick button small{display:block;font-weight:600;font-size:11px;opacity:.75;margin-top:3px}
 .saveinfo{font-size:11px;color:#8a97b3;margin-top:8px}
+.netzbox{margin-top:18px;padding-top:14px;border-top:1px solid #2b3856}
+.netzbox h4{margin:0 0 8px;font-size:12px;color:#8a97b3;text-transform:uppercase;letter-spacing:.6px}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:3px;color:#ffd166}
+.netzzeile{display:flex;align-items:center;gap:8px;font-size:14px}
+.netzzeile .punkt{width:12px;height:12px;border-radius:3px;flex:none}
+.wartet{background:#26314a;border:1px solid #3a4a70;border-radius:9px;padding:7px 9px;
+  font-size:12px;color:#c3cee6;margin-bottom:9px;line-height:1.45}
 .warn{background:#4a2030;border:1px solid #7d3350;color:#ffc2d2;border-radius:9px;
   padding:7px 9px;font-size:12px;margin-bottom:9px;line-height:1.45}
 .karte{width:58px;padding:7px 4px 6px;border-radius:9px;background:#232d42;
@@ -175,7 +182,9 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
       <div id="conts"></div>
       <div class="hint" style="margin-top:8px">Wer einen Kontinent <b>vollständig</b> hält, bekommt den Bonus jede Runde zusätzlich.</div>
     </div>
-    <div class="card"><h2>Verlauf</h2><div id="log"></div></div>
+    <div class="card"><h2>Verlauf</h2>
+      <div class="wartet" id="netzWarten" style="display:none"></div>
+      <div id="log"></div></div>
   </aside>
 </main>
 
@@ -228,7 +237,32 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
   <label class="toggle"><input type="checkbox" id="optCards" checked> Spielkarten &amp; Tausch</label>
   <label class="toggle"><input type="checkbox" id="optDraft" checked> Startaufstellung selbst wählen</label>
   <label class="toggle"><input type="checkbox" id="optDice" checked> Würfelanzahl selbst wählen (Verteidiger sieht vorher den Wurf)</label>
-  <button id="startBtn" style="width:100%;margin-top:16px">Spiel starten</button>
+  <button id="startBtn" style="width:100%;margin-top:16px">Spiel starten (an diesem Gerät)</button>
+
+  <div class="netzbox">
+    <h4>Oder online mit Freunden</h4>
+    <div class="btnrow">
+      <button class="sec" id="netzNeu">Spiel eröffnen</button>
+      <button class="sec" id="netzBei">Beitreten</button>
+    </div>
+    <div id="netzBeitritt" style="display:none;margin-top:8px">
+      <label>Spielkennung</label>
+      <input type="text" id="netzCode" maxlength="6" placeholder="z. B. K7PQ2M"
+             style="text-transform:uppercase;letter-spacing:2px">
+      <button class="sec" id="netzBeiOk" style="width:100%;margin-top:6px">Mitspielen</button>
+    </div>
+    <p class="hint" id="netzHinweis" style="margin-top:8px"></p>
+  </div>
+</div></div>
+
+<div class="overlay" id="lobbyOverlay"><div class="modal">
+  <h3>Spiel <span id="lobbyCode" class="code">–</span></h3>
+  <p class="hint">Gib die Kennung an deine Mitspieler weiter. Sie tragen sie
+    im Startmenü unter „Beitreten" ein.</p>
+  <div id="lobbyListe" class="setup-grid" style="margin:12px 0"></div>
+  <p class="hint" id="lobbyHinweis"></p>
+  <button id="lobbyStart" style="width:100%">Spiel starten</button>
+  <button class="sec" id="lobbyRaus" style="width:100%;margin-top:8px">Abbrechen</button>
 </div></div>
 
 <div class="overlay" id="winOverlay"><div class="modal" style="text-align:center">
@@ -238,6 +272,7 @@ input[type=text]{width:100%;padding:8px;border-radius:8px;border:1px solid #3545
 <script src="risiko-regeln.js"></script>
 <script src="risiko-daten.js" onerror="window.__keineDaten=1"></script>
 <script src="risiko-karte.js"></script>
+<script src="risiko-netz.js"></script>
 <!-- Die gemalte Weltkarte. Darf fehlen: dann bleibt das Brett einfarbig. -->
 <script src="grafik/land-textur.js" onerror="window.__keineTextur=1"></script>
 <script src="vendor/three.min.js"></script>
@@ -389,7 +424,13 @@ function schliesseDuell(){
 }
 
 let kampfCtx=null;
-function dispatch(a){
+/* Online-Sitzung, sonst null. Steht sie, laeuft jeder Zug ueber den Server. */
+let netz=null;
+
+/* Die EINZIGE Stelle, an der der Spielstand fortschreitet – gleich, ob der
+   Zug von hier kam oder von einem Mitspieler. Der Zufall kommt online vom
+   Server mit; offline ist er null und der Regelkern wuerfelt selbst. */
+function anwenden(a,zufall){
   /* Wer gegen wen – vor der Auswertung merken, danach ist pending weg. */
   if(G){
     if(a.type==="ATTACK")kampfCtx={to:a.to,ang:G.cur,vert:G.owner[a.to]};
@@ -397,7 +438,7 @@ function dispatch(a){
       kampfCtx={to:G.pending.to,ang:G.cur,vert:G.owner[G.pending.to]};
   }
   const vorher=G?G.log.length:0;
-  const r=E.apply(G,a);if(!r.ok){flash(r.error);return false;}
+  const r=E.apply(G,a,zufall);if(!r.ok){flash(r.error);return false;}
   G=r.state;render();save();
   /* Der Regelkern schreibt schon beim Angriff einen Eintrag mit den
      Wuerfeln des Angreifers und leerer Gegenseite – das ist die Vorlage
@@ -406,9 +447,43 @@ function dispatch(a){
   const neu=G.log.slice(vorher).find(e=>e.d&&e.d.d&&e.d.d.length);
   if(neu&&kampfCtx)zeigeDuell(neu.d,kampfCtx);
   return true;}
+
+/* Darf ich diese Aktion ueberhaupt einreichen? Online gilt: nur wer am Zug
+   ist – mit einer Ausnahme, und die ist der Grund, warum es diese Funktion
+   ueberhaupt braucht. Die Abwehr wirft der VERTEIDIGER, und der ist gerade
+   nicht am Zug. */
+function darfIch(a){
+  if(!netz||!G)return true;
+  if(G.pending&&G.pending.type==="defend")
+    return a.type==="DEFEND"&&G.owner[G.pending.to]===netz.platz;
+  return G.cur===netz.platz;
+}
+
+function dispatch(a){
+  if(!netz)return anwenden(a,null);
+  if(!darfIch(a)){
+    flash(G.pending&&G.pending.type==="defend"
+      ? "Der Verteidiger ist an der Reihe."
+      : G.players[G.cur].name+" ist am Zug.");
+    return false;
+  }
+  /* Der eigene Zug wird NICHT sofort angewendet, sondern erst, wenn er vom
+     Server zurueckkommt – mit seinen Wuerfeln und an seiner Stelle in der
+     Reihenfolge. Sonst haette man kurzzeitig ein anderes Brett als alle
+     anderen, und ein abgelehnter Zug wuerde trotzdem wirken. */
+  RiskNetz.einreichen(netz.sitzung,a,anwenden)
+    .then(()=>zugAnzeige())
+    .catch(e=>flash(e.message));
+  return true;}
 function flash(m){const d=$("log");const p=document.createElement("div");
   p.className="l-err";p.textContent="⚠ "+m;d.appendChild(p);d.scrollTop=d.scrollHeight;}
-function save(){if(!G)return;const ok=store(KEY,JSON.stringify({at:Date.now(),g:G}));
+function save(){if(!G)return;
+  /* Online wird bewusst nicht gesichert. Ein wiederaufgenommener Stand
+     wuesste nicht, bis zu welchem Zug er nachgespielt hat, und liefe der
+     Wahrheit auf dem Server stumm hinterher. Wiedereinstieg heisst hier:
+     Kennung eingeben und alles neu nachspielen. */
+  if(netz){$("saveInfo").textContent="Online – der Server hält den Stand.";return;}
+  const ok=store(KEY,JSON.stringify({at:Date.now(),g:G}));
   $("saveInfo").textContent=ok?("Gespeichert · "+new Date().toLocaleTimeString()):"";}
 function loadSave(){const r=load(KEY);if(!r)return null;
   try{const o=JSON.parse(r);return o&&o.g?o:null;}catch(e){return null;}}
@@ -464,6 +539,118 @@ $("addPlayer").onclick=()=>{if(names.length<6){
   renderSetup();}};
 $("remPlayer").onclick=()=>{if(names.length>2){names.pop();farben.pop();renderSetup();}};
 renderSetup();showResume();
+
+/* ---------- Online ----------
+   Die Lobby ist absichtlich duenn: Kennung erzeugen, Kennung eintippen,
+   warten bis alle da sind, starten. Alles Weitere macht der Spielstand
+   selbst, weil er auf jedem Geraet aus derselben Zugliste entsteht. */
+let lobby=null;      // {spiel,geheim,platz,wirt}
+function netzHinweis(t,fehler){
+  const e=$("netzHinweis");e.textContent=t||"";
+  e.style.color=fehler?"#ff8fa8":"#8a97b3";
+}
+function netzOpts(){
+  return {cap3:$("optCap3").checked,cards:$("optCards").checked,
+          draft:$("optDraft").checked,dice:$("optDice").checked};
+}
+$("netzBei").onclick=()=>{
+  const k=$("netzBeitritt");
+  k.style.display=k.style.display==="none"?"block":"none";
+  if(k.style.display==="block")$("netzCode").focus();
+};
+$("netzNeu").onclick=async()=>{
+  netzHinweis("Wird eröffnet …");
+  try{
+    const a=await RiskNetz.anlegen(names[0]||"Spieler 1",farben[0],netzOpts());
+    lobby={spiel:a.spiel,geheim:a.geheim,platz:a.platz,wirt:true};
+    lobbyOeffnen();
+  }catch(e){netzHinweis(e.message,true);}
+};
+$("netzBeiOk").onclick=async()=>{
+  const code=($("netzCode").value||"").trim().toUpperCase();
+  if(code.length<4){netzHinweis("Bitte die Kennung eintragen.",true);return;}
+  netzHinweis("Beitreten …");
+  try{
+    const a=await RiskNetz.beitreten(code,names[0]||"Spieler",farben[0]);
+    lobby={spiel:a.spiel,geheim:a.geheim,platz:a.platz,wirt:false};
+    lobbyOeffnen();
+  }catch(e){netzHinweis(e.message,true);}
+};
+
+let lobbyTakt=null;
+function lobbyOeffnen(){
+  $("lobbyCode").textContent=lobby.spiel;
+  $("setupOverlay").classList.remove("show");
+  $("lobbyOverlay").classList.add("show");
+  $("lobbyStart").style.display=lobby.wirt?"block":"none";
+  lobbyNachsehen();
+  lobbyTakt=setInterval(lobbyNachsehen,2000);
+}
+function lobbySchliessen(){
+  if(lobbyTakt){clearInterval(lobbyTakt);lobbyTakt=null;}
+  $("lobbyOverlay").classList.remove("show");
+}
+async function lobbyNachsehen(){
+  if(!lobby)return;
+  try{
+    const l=await RiskNetz.lage(lobby.spiel);
+    const box=$("lobbyListe");box.innerHTML="";
+    l.spieler.forEach((p,i)=>{
+      const z=document.createElement("div");z.className="netzzeile";
+      z.innerHTML='<span class="punkt" style="background:'+p.color+'"></span>'+
+        p.name+(i===lobby.platz?" <span class=\"hint\">(du)</span>":"");
+      box.appendChild(z);
+    });
+    $("lobbyHinweis").textContent=lobby.wirt
+      ? (l.spieler.length<2?"Mindestens ein Mitspieler muss beitreten."
+                           :l.spieler.length+" Spieler – du kannst starten.")
+      : "Warten, bis "+l.spieler[0].name+" startet …";
+    /* Startet der Wirt, faellt das hier auf: die Lage kennt ploetzlich den
+       Startwert. Genau daran haengt der Uebergang ins Spiel. */
+    if(l.gestartet&&l.saat)netzSpielStarten(l.saat,l.spieler,l.opts);
+  }catch(e){$("lobbyHinweis").textContent=e.message;}
+}
+$("lobbyStart").onclick=async()=>{
+  try{
+    const a=await RiskNetz.starten(lobby.spiel,lobby.geheim);
+    netzSpielStarten(a.saat,a.spieler,a.opts);
+  }catch(e){$("lobbyHinweis").textContent=e.message;}
+};
+$("lobbyRaus").onclick=()=>{lobby=null;lobbySchliessen();$("setupOverlay").classList.add("show");};
+
+function netzSpielStarten(saat,spieler,opts){
+  if(netz)return;                       // die Lobby fragt im Takt, einmal genuegt
+  lobbySchliessen();
+  netz={sitzung:RiskNetz.Sitzung(lobby.spiel,lobby.geheim,lobby.platz),
+        platz:lobby.platz};
+  /* Alle bauen dasselbe Brett aus demselben Startwert – ohne dass je ein
+     Spielstand uebertragen wird. */
+  G=E.createGame(spieler,opts,saat);
+  sel=null;selCards=[];logShown=0;$("log").innerHTML="";
+  $("cardPanel").style.display=G.opts.cards?"block":"none";
+  render();
+  /* Wer spaeter dazukommt oder neu laedt, holt hier die ganze Liste ab und
+     spielt sie nach. */
+  RiskNetz.abholen(netz.sitzung,anwenden).then(zugAnzeige).catch(e=>flash(e.message));
+  RiskNetz.taktStarten(netz.sitzung,anwenden,(n,fehler)=>{
+    if(fehler)flash(fehler.message);
+    if(n)zugAnzeige();
+  });
+}
+/* Kleiner Hinweis ueber dem Verlauf, solange ein anderer zieht. */
+function zugAnzeige(){
+  const box=$("netzWarten");
+  if(!box)return;
+  if(!netz||!G||G.winner!==null){box.style.display="none";return;}
+  const fremd=!darfIch({type:"END_PHASE"});
+  box.style.display=fremd?"block":"none";
+  if(fremd){
+    const wer=G.pending&&G.pending.type==="defend"
+      ? G.players[G.owner[G.pending.to]].name+" wehrt sich"
+      : G.players[G.cur].name+" ist am Zug";
+    box.textContent="⏳ "+wer+" – wird alle paar Sekunden nachgesehen.";
+  }
+}
 $("startBtn").onclick=()=>{
   const pl=names.map((n,i)=>({name:n||("Spieler "+(i+1)),color:farben[i]||PC[i]}));
   G=E.createGame(pl,{cap3:$("optCap3").checked,cards:$("optCards").checked,
@@ -1768,7 +1955,8 @@ function setV(i){["vN","vE","vS","vW"].forEach((b,k)=>$(b).classList.toggle("on"
 function render(){
   if(!G){drawBoard();return;}
   const setup=E.inSetup(G);
-  $("turnBadge").textContent=G.players[G.cur].name;
+  $("turnBadge").textContent=G.players[G.cur].name+
+    (netz?(G.cur===netz.platz?" · du":""):"");
   $("turnBadge").style.background=G.players[G.cur].color;
   document.querySelectorAll(".pill[data-ph]").forEach(e=>
     e.classList.toggle("active",setup?e.dataset.ph==="setup":e.dataset.ph===G.phase));
