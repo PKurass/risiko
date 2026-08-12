@@ -146,6 +146,57 @@ function oeffentlich(array $spieler): array {
     return array_map(fn($p) => ["name" => $p["name"], "color" => $p["color"]], $spieler);
 }
 
+/* ---------- Selbstpruefung ----------
+   Vor allem anderen, und ohne Datenbank: wer die Datei frisch hochgeladen
+   hat, will im Browser sehen, was noch fehlt – nicht eine weisse Seite oder
+   ein JSON, das er erst entziffern muss. Deshalb Klartext.
+
+   Aufruf im Browser:  .../server/risiko.php?was=pruefung */
+if (($_GET["was"] ?? "") === "pruefung") {
+    header("Content-Type: text/plain; charset=utf-8");
+    $zeilen = [];
+    $alles = true;
+    $sagen = function (bool $ok, string $text, string $hilfe = "") use (&$zeilen, &$alles) {
+        $zeilen[] = ($ok ? "OK    " : "FEHLT ") . $text;
+        if (!$ok) { $alles = false; if ($hilfe !== "") $zeilen[] = "      -> " . $hilfe; }
+    };
+
+    $sagen(PHP_VERSION_ID >= 80100, "PHP-Version " . PHP_VERSION . " (nötig: 8.1 oder neuer)",
+        "Bei IONOS im Kundenmenü unter 'PHP-Einstellungen' auf 8.1+ stellen.");
+    $sagen(in_array("mysql", PDO::getAvailableDrivers(), true) ||
+           in_array("sqlite", PDO::getAvailableDrivers(), true),
+        "Datenbanktreiber vorhanden (" . implode(", ", PDO::getAvailableDrivers()) . ")");
+    $hatZugang = is_file(__DIR__ . "/zugang.php") || getenv("RISIKO_DSN");
+    $sagen($hatZugang, "Zugangsdaten (server/zugang.php)",
+        "zugang.beispiel.php kopieren, in zugang.php umbenennen und ausfüllen.");
+
+    if ($hatZugang) {
+        try {
+            $p = db();
+            $sagen(true, "Verbindung zur Datenbank steht");
+            $p->query("SELECT COUNT(*) FROM risiko_spiel")->fetchColumn();
+            $sagen(true, "Tabellen sind angelegt");
+            $probe = "PRUEF" . random_int(10, 99);
+            $p->prepare("INSERT INTO risiko_spiel (id, saat, opts, spieler, gestartet, angelegt, beruehrt)
+                         VALUES (?,?,?,?,0,?,?)")
+              ->execute([$probe, 1, "{}", "[]", time(), time()]);
+            $p->prepare("DELETE FROM risiko_spiel WHERE id = ?")->execute([$probe]);
+            $sagen(true, "Schreiben und Löschen funktioniert");
+        } catch (Throwable $e) {
+            $sagen(false, "Datenbank: " . $e->getMessage(),
+                "Zugangsdaten prüfen. Bei IONOS stehen sie im Kundenmenü unter 'Datenbanken'.");
+        }
+    }
+
+    echo "RISIKO – Selbstprüfung des Servers\n";
+    echo str_repeat("=", 40) . "\n\n";
+    echo implode("\n", $zeilen) . "\n\n";
+    echo $alles
+        ? "Alles bereit. Du kannst ein Spiel eröffnen.\n"
+        : "Es fehlt noch etwas – siehe oben.\n";
+    exit;
+}
+
 /* ---------- Anfragen ---------- */
 $was = $_GET["was"] ?? "";
 $ein = eingang();
@@ -285,5 +336,5 @@ case "aufraeumen": {
 }
 
 default:
-    fehler(400, "Unbekannte Anfrage. Erlaubt: anlegen, beitreten, lage, starten, zug, zuege, aufraeumen.");
+    fehler(400, "Unbekannte Anfrage. Erlaubt: pruefung, anlegen, beitreten, lage, starten, zug, zuege, aufraeumen.");
 }

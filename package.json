@@ -14,7 +14,8 @@
     "textur": "node werkzeug/textur-backen.mjs",
     "vorschau": "node werkzeug/form-vorschau.mjs",
     "einzeldatei": "node werkzeug/einzeldatei-bauen.mjs",
-    "artefakt": "node werkzeug/einzeldatei-bauen.mjs --fragment"
+    "artefakt": "node werkzeug/einzeldatei-bauen.mjs --fragment",
+    "hochladen": "node werkzeug/hochladen-bauen.mjs"
   },
   "devDependencies": {
     "playwright": "1.56.1"

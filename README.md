@@ -130,15 +130,25 @@ Fehlt `grafik/land-textur.js`, läuft das Spiel wie bisher, nur einfarbig.
 Im Startmenü unten: **Spiel eröffnen** gibt eine sechsstellige Kennung aus,
 die anderen tragen sie unter **Beitreten** ein. Wer eröffnet hat, startet.
 
-Einrichten (einmalig, beim Webhoster):
+**Schritt für Schritt: [INSTALLATION.md](INSTALLATION.md)** – mit Klickwegen
+für IONOS, den Fallstricken und einer Liste, was zu tun ist, wenn etwas nicht
+geht.
 
-1. `server/risiko.php` ins Web-Verzeichnis legen, in einen Ordner `server/`
-   neben `risiko.html`.
-2. `server/zugang.beispiel.php` als `server/zugang.php` kopieren und die
-   MySQL-Daten eintragen (bei IONOS im Kundenmenü unter „Datenbanken").
-   Die Tabellen legt der Server beim ersten Aufruf selbst an.
+Kurzfassung:
 
-Das war's – kein Node, kein Prozess, der laufen muss.
+```bash
+npm run hochladen     # legt hochladen/ an: genau die Dateien für den Webspace
+```
+
+Inhalt per FTP ins Web-Verzeichnis, `server/zugang.beispiel.php` in
+`zugang.php` umbenennen und die MySQL-Daten eintragen. Ob alles steht, sagt
+
+```
+https://deine-seite.de/server/risiko.php?was=pruefung
+```
+
+im Klartext. Tabellen legt der Server selbst an; kein Node, kein Prozess, der
+laufen muss.
 
 **Wie es funktioniert:** übertragen werden nie Spielstände, sondern nur die
 Liste der Züge. Jeder spielt sie in derselben Reihenfolge nach und kommt
@@ -219,7 +229,9 @@ ineinander. Ebenfalls nicht eingecheckt.
 | `server/risiko.php` | Postfach-Server (PHP + MySQL), kennt keine Regeln |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei (`--fragment` für die Web-Fassung) |
+| `werkzeug/hochladen-bauen.mjs` | Sammelt die Dateien für den Webspace (`npm run hochladen`) |
 | `DOKUMENTATION.md` | Technische Dokumentation |
+| `INSTALLATION.md` | Online-Modus beim Webhoster einrichten |
 | `archiv/` | Nicht eingebundene Stände, siehe [archiv/README.md](archiv/README.md) |
 
 `Risk.svg` liegt mit im Repo. Zum Spielen wird sie nicht gebraucht, nur zum

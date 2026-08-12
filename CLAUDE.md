@@ -27,6 +27,7 @@ npm run karte                         # Risk.svg -> risiko-daten.js
 npm run textur -- grafik/Risk_tex.png # Malerei -> grafik/land-textur.js
 npm run einzeldatei                   # eine verschickbare HTML-Datei
 npm run artefakt                      # dieselbe ohne Dokumentrahmen (Web)
+npm run hochladen                     # Dateien fuer den Webspace einsammeln
 ```
 
 ## Erzeugte Dateien – nie von Hand ändern
