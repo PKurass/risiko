@@ -171,6 +171,7 @@ ineinander. Ebenfalls nicht eingecheckt.
 | `grafik/land-textur.js` | **Erzeugt.** Die gemalte Weltkarte als data-URL. Darf fehlen |
 | `werkzeug/karte-backen.mjs` | Backt die Karte headless |
 | `werkzeug/textur-backen.mjs` | Prüft und backt die Landtextur (`npm run textur`) |
+| `werkzeug/form-vorschau.mjs` | Zeigt die Spielsteine einzeln und misst sie nach (`npm run vorschau`) |
 | `werkzeug/regeln-testen.mjs` | Tests für den Regelkern (`npm test`) |
 | `werkzeug/einzeldatei-bauen.mjs` | Packt alles in eine verschickbare HTML-Datei (`--fragment` für die Web-Fassung) |
 | `DOKUMENTATION.md` | Technische Dokumentation |
@@ -191,6 +192,13 @@ Hohlkehle dazwischen**: jeder Arm ist ein Balken der Breite `armBreite` mit
 runder Kappe, und wo zwei Arme zusammentreffen, sitzt eine Hohlkehle vom
 Radius `kehle`. Die Armflanken sind die Tangenten dazwischen und ergeben sich
 von selbst. Alle drei Steine hängen an denselben beiden Reglern.
+
+Die Kehle ist dabei **nicht** frei wählbar, wenn alle drei dieselbe
+Handschrift behalten sollen: bei mehr Armen liegen die Kehlen enger
+beieinander, und derselbe Radius lässt die Mitte zuwachsen – die Arme werden
+Stummel. Aus der Vorgabe „engste Stelle bleibt bei rund 0,29 R" folgt die
+Kehle für jede Zackenzahl. Ansehen und nachmessen lässt sich das mit
+`npm run vorschau`, ohne das Brett zu bemühen.
 
 Die Steine liegen an Plätzen, die je Land einmal ausgewürfelt und gemerkt
 werden – verstreut, aber weit genug vom Rand, damit keiner über der Klippe

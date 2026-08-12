@@ -898,9 +898,14 @@ function truppenGeometrien(){
      als der Einer – auch das stammt von den Fotos. */
   /* Armbreite und Kehle als Anteil des Radius – so behalten alle drei
      Steine dieselbe Handschrift, obwohl sie verschieden viele Arme haben. */
-  const bau=[{zacken:3,r:0.62,d:0.38,arm:0.36,kehle:0.48},
-             {zacken:4,r:0.72,d:0.43,arm:0.33,kehle:0.38},
-             {zacken:5,r:0.82,d:0.48,arm:0.30,kehle:0.31}];
+  /* Die Kehle ist NICHT frei waehlbar, wenn die Steine dieselbe Handschrift
+     behalten sollen: bei mehr Armen liegen die Kehlen enger beieinander, und
+     derselbe Radius laesst die Mitte zuwachsen – die Arme werden Stummel.
+     Aus der Bedingung "engste Stelle bleibt bei rund 0.29 R" ergibt sich die
+     Kehle je Zackenzahl (siehe sternForm). */
+  const bau=[{zacken:3,r:0.62,d:0.38,arm:0.36,kehle:0.466},
+             {zacken:4,r:0.72,d:0.43,arm:0.32,kehle:0.154},
+             {zacken:5,r:0.82,d:0.48,arm:0.28,kehle:0.088}];
   return bau.map(b=>{
     const geo=new THREE.ExtrudeGeometry(
       sternForm(b.zacken,b.r*m,b.arm*b.r*m,b.kehle*b.r*m),{
@@ -1735,6 +1740,11 @@ function bindInput(){
 }
 return{
   build,recolor,ready:()=>ready,
+  /* Zugang zum Innenleben – ausschliesslich fuer die Werkzeuge in
+     werkzeug/, damit sie einzelne Teile ansehen und nachmessen koennen,
+     ohne dass jemand dafuer Code doppelt pflegen muss. Das Spiel selbst
+     benutzt davon nichts. */
+  intern:()=>({scene,rend,cam,group,truppenGruppe,truppenGeometrien}),
   setView(i){tAng=i*Math.PI/2;panX=0;panZ=0;},
   setFaerbung(m){faerbung=m;if(ready)recolor();},
   getFaerbung(){return faerbung;},
