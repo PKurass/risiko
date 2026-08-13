@@ -30,7 +30,7 @@ const DATEIEN = [
   ["vendor/three.min.js", "3D-Bibliothek"],
   ["grafik/land-textur.js", "Gemalte Weltkarte", true],
   ["server/risiko.php", "Postfach-Server"],
-  ["server/zugang.beispiel.php", "Vorlage für die Zugangsdaten"],
+  ["server/zugang.beispiel.php", "Zugangsdaten – muss ausgefüllt werden", false, "server/zugang.php"],
 ];
 
 const LIESMICH = `RISIKO – was hier drin liegt
@@ -49,12 +49,12 @@ Die Ordnerstruktur muss erhalten bleiben:
     vendor/three.min.js
     grafik/land-textur.js
     server/risiko.php
-    server/zugang.php          <- die musst DU noch anlegen
+    server/zugang.php          <- da traegst du deine Datenbank ein
 
 Danach:
 
- 1. server/zugang.beispiel.php in server/zugang.php umbenennen und die
-    Datenbank-Zugangsdaten eintragen.
+ 1. server/zugang.php oeffnen und die vier Angaben aus dem IONOS-Kundenmenue
+    eintragen (alles, was mit HIER- anfaengt, ersetzen).
  2. Im Browser aufrufen:  https://DEINE-SEITE/server/risiko.php?was=pruefung
     Dort steht im Klartext, ob noch etwas fehlt.
  3. Spielen:              https://DEINE-SEITE/risiko.html
@@ -75,7 +75,7 @@ fs.mkdirSync(ZIEL, { recursive: true });
 
 let gesamt = 0;
 const fehlend = [];
-for (const [rel, zweck, darfFehlen] of DATEIEN) {
+for (const [rel, zweck, darfFehlen, alsName] of DATEIEN) {
   const quelle = path.join(WURZEL, rel);
   if (!fs.existsSync(quelle)) {
     if (darfFehlen) { fehlend.push(rel + " (" + zweck + ") – optional"); continue; }
@@ -83,9 +83,14 @@ for (const [rel, zweck, darfFehlen] of DATEIEN) {
     console.error("Fehlt risiko-daten.js? Dann erst 'npm run karte' laufen lassen.");
     process.exit(1);
   }
-  const b = kopiere(quelle, path.join(ZIEL, rel));
+  /* Die Vorlage wandert gleich unter ihrem Zielnamen mit. Umbenennen per
+     FTP ist ein Schritt, bei dem viel schiefgeht – und ohne den Schritt
+     kommt beim Aufruf sofort eine verstaendliche Meldung, dass die
+     Platzhalter noch drinstehen. */
+  const ziel = path.join(ZIEL, alsName || rel);
+  const b = kopiere(quelle, ziel);
   gesamt += b;
-  console.log("  " + rel.padEnd(28) + (b / 1024).toFixed(0).padStart(6) + " kB   " + zweck);
+  console.log("  " + (alsName || rel).padEnd(28) + (b / 1024).toFixed(0).padStart(6) + " kB   " + zweck);
 }
 fs.writeFileSync(path.join(ZIEL, "LIESMICH.txt"), LIESMICH);
 

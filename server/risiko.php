@@ -167,8 +167,22 @@ if (($_GET["was"] ?? "") === "pruefung") {
            in_array("sqlite", PDO::getAvailableDrivers(), true),
         "Datenbanktreiber vorhanden (" . implode(", ", PDO::getAvailableDrivers()) . ")");
     $hatZugang = is_file(__DIR__ . "/zugang.php") || getenv("RISIKO_DSN");
-    $sagen($hatZugang, "Zugangsdaten (server/zugang.php)",
-        "zugang.beispiel.php kopieren, in zugang.php umbenennen und ausfüllen.");
+    $sagen($hatZugang, "Datei server/zugang.php ist da",
+        "Die Datei fehlt. Sie liegt im Paket bei und gehört in den Ordner server/.");
+
+    /* Die haeufigste Stolperstelle: die Datei ist da, aber es stehen noch die
+       Beispielwerte drin. Ohne diesen Hinweis kaeme gleich nur ein
+       "Access denied" vom Datenbankserver, und das sagt einem Laien nichts. */
+    if ($hatZugang && is_file(__DIR__ . "/zugang.php")) {
+        $c = require __DIR__ . "/zugang.php";
+        $offen = str_contains($c["dsn"] ?? "", "HIER-")
+              || str_contains((string)($c["benutzer"] ?? ""), "HIER-")
+              || str_contains((string)($c["kennwort"] ?? ""), "HIER-");
+        $sagen(!$offen, "Zugangsdaten sind ausgefüllt",
+            "In server/zugang.php stehen noch die Platzhalter (HIER-...). " .
+            "Trag die vier Angaben aus dem IONOS-Kundenmenü ein.");
+        if ($offen) { $hatZugang = false; }
+    }
 
     if ($hatZugang) {
         try {
