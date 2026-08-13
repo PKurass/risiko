@@ -38,6 +38,13 @@
      Zum Ausprobieren ohne MySQL: RISIKO_DSN=sqlite:/pfad/zur/datei.db
    ===================================================================== */
 
+/* Fehler sichtbar machen. Ohne das liefert eine aeltere PHP-Version bei
+   einem Problem nur eine weisse Seite, und man raet, was los ist. Bei einem
+   privaten Spiel unter Freunden ist das Anzeigen unbedenklich; wer es
+   spaeter zumachen will, setzt display_errors auf 0. */
+error_reporting(E_ALL);
+ini_set("display_errors", "1");
+
 header("Content-Type: application/json; charset=utf-8");
 header("Cache-Control: no-store");
 
@@ -68,7 +75,7 @@ function db(): PDO {
    den man vergessen kann – und die einzige Stelle, an der sich MySQL und
    SQLite unterscheiden, ist der Typ der laufenden Nummer. */
 function tabellen(PDO $pdo): void {
-    $sqlite = str_starts_with($pdo->getAttribute(PDO::ATTR_DRIVER_NAME), "sqlite");
+    $sqlite = substr($pdo->getAttribute(PDO::ATTR_DRIVER_NAME), 0, 6) === "sqlite";
     $id = $sqlite ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "INTEGER PRIMARY KEY AUTO_INCREMENT";
     $pdo->exec("CREATE TABLE IF NOT EXISTS risiko_spiel (
         id VARCHAR(12) PRIMARY KEY,
@@ -93,12 +100,12 @@ function tabellen(PDO $pdo): void {
 }
 
 /* ---------- Kleinkram ---------- */
-function fehler(int $code, string $text): never {
+function fehler(int $code, string $text) {
     http_response_code($code);
     echo json_encode(["fehler" => $text], JSON_UNESCAPED_UNICODE);
     exit;
 }
-function raus(array $d): never {
+function raus(array $d) {
     echo json_encode($d, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -143,7 +150,7 @@ function platzVon(array $spieler, string $geheim): int {
 }
 /* Nach aussen nie das Geheimnis der anderen. */
 function oeffentlich(array $spieler): array {
-    return array_map(fn($p) => ["name" => $p["name"], "color" => $p["color"]], $spieler);
+    return array_map(function ($p) { return ["name" => $p["name"], "color" => $p["color"]]; }, $spieler);
 }
 
 /* ---------- Selbstpruefung ----------
@@ -161,8 +168,8 @@ if (($_GET["was"] ?? "") === "pruefung") {
         if (!$ok) { $alles = false; if ($hilfe !== "") $zeilen[] = "      -> " . $hilfe; }
     };
 
-    $sagen(PHP_VERSION_ID >= 80100, "PHP-Version " . PHP_VERSION . " (nötig: 8.1 oder neuer)",
-        "Bei IONOS im Kundenmenü unter 'PHP-Einstellungen' auf 8.1+ stellen.");
+    $sagen(PHP_VERSION_ID >= 70000, "PHP-Version " . PHP_VERSION . " (nötig: 7.0 oder neuer)",
+        "Bei IONOS im Kundenmenü unter 'PHP-Einstellungen' auf 7.4 oder neuer stellen.");
     $sagen(in_array("mysql", PDO::getAvailableDrivers(), true) ||
            in_array("sqlite", PDO::getAvailableDrivers(), true),
         "Datenbanktreiber vorhanden (" . implode(", ", PDO::getAvailableDrivers()) . ")");
@@ -175,9 +182,9 @@ if (($_GET["was"] ?? "") === "pruefung") {
        "Access denied" vom Datenbankserver, und das sagt einem Laien nichts. */
     if ($hatZugang && is_file(__DIR__ . "/zugang.php")) {
         $c = require __DIR__ . "/zugang.php";
-        $offen = str_contains($c["dsn"] ?? "", "HIER-")
-              || str_contains((string)($c["benutzer"] ?? ""), "HIER-")
-              || str_contains((string)($c["kennwort"] ?? ""), "HIER-");
+        $offen = strpos((string)($c["dsn"] ?? ""), "HIER-") !== false
+              || strpos((string)($c["benutzer"] ?? ""), "HIER-") !== false
+              || strpos((string)($c["kennwort"] ?? ""), "HIER-") !== false;
         $sagen(!$offen, "Zugangsdaten sind ausgefüllt",
             "In server/zugang.php stehen noch die Platzhalter (HIER-...). " .
             "Trag die vier Angaben aus dem IONOS-Kundenmenü ein.");
